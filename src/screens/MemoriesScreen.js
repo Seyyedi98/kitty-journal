@@ -46,7 +46,7 @@ function Cell({ photo, size, onPress, c, index }) {
 }
 
 /** Memories: a photo grid and a list of places, built only from what the user saved. */
-export default function MemoriesScreen({ db, t, c, rtl, language, calendar, refreshKey, onOpenEntry, onChanged, insets }) {
+export default function MemoriesScreen({ db, t, c, rtl, language, calendar, refreshKey, onOpenEntry, onChanged, insets, runExternal = (fn) => fn() }) {
   const { width } = useWindowDimensions();
   const [tab, setTab] = useState('photos');
   const [photos, setPhotos] = useState(null);
@@ -123,8 +123,10 @@ export default function MemoriesScreen({ db, t, c, rtl, language, calendar, refr
     const label = place.name || place.address || '';
     try {
       const primary = geoUrl(place.latitude, place.longitude, label);
-      if (await Linking.canOpenURL(primary)) await Linking.openURL(primary);
-      else await Linking.openURL(webMapUrl(place.latitude, place.longitude));
+      await runExternal(async () => {
+        if (await Linking.canOpenURL(primary)) await Linking.openURL(primary);
+        else await Linking.openURL(webMapUrl(place.latitude, place.longitude));
+      });
     } catch {
       Alert.alert(t.openInMaps, t.mapsUnavailable);
     }

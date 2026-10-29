@@ -20,6 +20,10 @@ const exact = {
   'react-native-webview': stub('webview.jsx'),
   'expo-sharing': stub('expo-sharing.js'),
   'expo-document-picker': stub('expo-document-picker.js'),
+  'expo-notifications': stub('expo-notifications.js'),
+  'expo-secure-store': stub('expo-secure-store.js'),
+  'expo-crypto': stub('expo-crypto.js'),
+  'expo-local-authentication': stub('expo-local-authentication.js'),
 };
 const virtual = {
   'lucide-react-native': `import { iconProxy } from ${JSON.stringify(stub('misc.jsx'))}; module.exports = iconProxy;`,

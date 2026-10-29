@@ -99,6 +99,13 @@ import TagsScreen from "./src/screens/TagsScreen";
 import SettingsScreen from "./src/screens/SettingsScreen";
 import BackupScreen from "./src/screens/BackupScreen";
 import StorageScreen from "./src/screens/StorageScreen";
+import ReminderScreen from "./src/screens/ReminderScreen";
+import LockScreen from "./src/screens/LockScreen";
+import OnboardingScreen from "./src/screens/OnboardingScreen";
+import AppLockScreen from "./src/screens/AppLockScreen";
+import { useAppLock } from "./src/hooks/useAppLock";
+import { initNotifications, onReminderTapped } from "./src/platform/notifications";
+import { syncReminders } from "./src/services/reminderSync";
 import { numberFormatter } from "./src/utils/format";
 import { EMOTIONS } from "./src/utils/emotions";
 
@@ -144,6 +151,7 @@ function AppShell() {
   });
   setUiFontsLoaded(fontsLoaded);
   const db = useSQLiteContext();
+  const lock = useAppLock(db);
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const systemScheme = useColorScheme();
@@ -165,9 +173,10 @@ function AppShell() {
     getCalendarParts(dateKey(), "gregorian"),
   );
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [subScreen, setSubScreen] = useState(null); // null | "trash" | "tags" | "backup" | "storage"
+  const [subScreen, setSubScreen] = useState(null); // null | "trash" | "tags" | "backup" | "storage" | "reminders" | "lock"
   const [trashCount, setTrashCount] = useState(0);
   const [ready, setReady] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const [undo, setUndo] = useState(null);
   const undoTimer = useRef(null);
@@ -211,6 +220,15 @@ function AppShell() {
       try {
         const saved = await loadSettings(db);
         if (cancelled) return;
+        // First run only: a journal that already has content or settings never sees the intro.
+        if (saved.onboardingDone !== true) {
+          const hasData =
+            Boolean(saved.language) ||
+            Boolean(await db.getFirstAsync("SELECT 1 AS x FROM entries LIMIT 1"));
+          if (cancelled) return;
+          if (hasData) saveSetting(db, "onboardingDone", true).catch(() => {});
+          else setShowOnboarding(true);
+        }
         const lang = LANGUAGES.includes(saved.language) ? saved.language : "en";
         const cal = CALENDAR_TYPES.includes(saved.calendarType)
           ? saved.calendarType
@@ -286,6 +304,18 @@ function AppShell() {
     setEditorDate(entry.journal_date);
     setEditorVisible(true);
   };
+  // Reminders: keep the schedule in the app language, and open a new entry when one is tapped.
+  const openNewRef = useRef(openNew);
+  openNewRef.current = openNew;
+  useEffect(() => {
+    initNotifications();
+    return onReminderTapped(() => openNewRef.current());
+  }, []);
+  useEffect(() => {
+    if (ready) syncReminders(db, t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, language, db]);
+
   const closeEditor = () => {
     setEditorVisible(false);
     refresh().catch(console.error);
@@ -502,6 +532,7 @@ function AppShell() {
   else if (settingsOpen && subScreen === "backup")
     content = (
       <BackupScreen
+        runExternal={lock.runExternal}
         db={db}
         t={t}
         c={c}
@@ -522,6 +553,28 @@ function AppShell() {
         language={language}
         onBack={() => setSubScreen(null)}
         onChanged={refresh}
+      />
+    );
+  else if (settingsOpen && subScreen === "lock")
+    content = (
+      <AppLockScreen
+        lock={lock}
+        t={t}
+        c={c}
+        rtl={rtl}
+        onBack={() => setSubScreen(null)}
+      />
+    );
+  else if (settingsOpen && subScreen === "reminders")
+    content = (
+      <ReminderScreen
+        runExternal={lock.runExternal}
+        db={db}
+        t={t}
+        c={c}
+        rtl={rtl}
+        language={language}
+        onBack={() => setSubScreen(null)}
       />
     );
   else if (settingsOpen && subScreen === "tags")
@@ -550,6 +603,7 @@ function AppShell() {
         setAppearance={changeAppearance}
         onOpen={setSubScreen}
         trashCount={trashCount}
+        lockEnabled={lock.config.enabled}
         num={numberFormatter(language)}
       />
     );
@@ -602,6 +656,7 @@ function AppShell() {
   else if (tab === "memories")
     content = (
       <MemoriesScreen
+        runExternal={lock.runExternal}
         db={db}
         t={t}
         c={c}
@@ -635,6 +690,41 @@ function AppShell() {
     insights: t.insights,
     settings: t.settings,
   };
+
+  // While locked nothing of the journal is rendered (this also closes any open editor/popup).
+  if (!lock.ready) return <View style={[styles.safeRoot, { backgroundColor: c.bg }]} />;
+  if (lock.locked)
+    return (
+      <View style={[styles.safeRoot, { backgroundColor: c.bg }]}>
+        <ExpoStatusBar style={dark ? "light" : "dark"} backgroundColor={c.bg} translucent={false} />
+        <LockScreen lock={lock} t={t} c={c} rtl={rtl} insets={insets} />
+      </View>
+    );
+
+  if (showOnboarding && ready)
+    return (
+      <View style={[styles.safeRoot, { backgroundColor: c.bg }]}>
+        <ExpoStatusBar style={dark ? "light" : "dark"} backgroundColor={c.bg} translucent={false} />
+        <OnboardingScreen
+          db={db}
+          t={t}
+          c={c}
+          rtl={rtl}
+          insets={insets}
+          runExternal={lock.runExternal}
+          language={language}
+          changeLanguage={changeLanguage}
+          calendarType={calendarType}
+          changeCalendar={changeCalendar}
+          appearance={appearance}
+          setAppearance={changeAppearance}
+          onFinish={() => {
+            persistSetting("onboardingDone", true);
+            setShowOnboarding(false);
+          }}
+        />
+      </View>
+    );
 
   return (
     <View
@@ -755,6 +845,7 @@ function AppShell() {
         </View>
       </View>
       <EditorModal
+        runExternal={lock.runExternal}
         visible={editorVisible}
         entry={editing}
         initialDate={editorDate}

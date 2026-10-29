@@ -23,7 +23,10 @@
     },
     "plugins": [
       "expo-sqlite",
-      "expo-sharing"
+      "expo-sharing",
+      "expo-font",
+      "expo-status-bar",
+      "expo-secure-store"
     ],
     "extra": {
       "eas": {

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
-import { Archive, ChevronLeft, ChevronRight, Heart, HardDrive, Tag, Trash2 } from 'lucide-react-native';
+import { Archive, Bell, ChevronLeft, ChevronRight, Heart, HardDrive, Lock, Tag, Trash2 } from 'lucide-react-native';
 import { ScrollView, Text } from '../ui';
 import { Card, LinkRow, Segmented } from '../components/common';
 import { fmt } from '../i18n';
@@ -21,6 +21,7 @@ export default function SettingsScreen({
   setAppearance,
   onOpen,
   trashCount = 0,
+  lockEnabled = false,
   num = String,
 }) {
   const Chevron = rtl ? ChevronLeft : ChevronRight;
@@ -76,6 +77,8 @@ export default function SettingsScreen({
       <Card title={t.settingsData} c={c} rtl={rtl} style={{ gap: 0 }}>
         <LinkRow icon={Archive} title={t.backup} onPress={() => onOpen('backup')} trailing={chevron} c={c} rtl={rtl} />
         <LinkRow icon={HardDrive} title={t.storage} onPress={() => onOpen('storage')} trailing={chevron} c={c} rtl={rtl} />
+        <LinkRow icon={Lock} title={t.appLock} subtitle={lockEnabled ? t.lockEnabledMsg : undefined} onPress={() => onOpen('lock')} trailing={chevron} c={c} rtl={rtl} />
+        <LinkRow icon={Bell} title={t.reminders} onPress={() => onOpen('reminders')} trailing={chevron} c={c} rtl={rtl} />
         <LinkRow
           icon={Trash2}
           title={t.trash}

@@ -21,14 +21,22 @@ export function initNotifications() {
   });
 }
 
+// Best effort: some builds (notably Expo Go) throw from the channel module. Without our channel
+// Android simply uses the default one, so the reminder must still be scheduled.
+let channelReady = false;
 async function ensureChannel(name) {
-  if (Platform.OS !== 'android') return;
-  await Notifications.setNotificationChannelAsync(CHANNEL_ID, {
-    name,
-    importance: Notifications.AndroidImportance.DEFAULT,
-    vibrationPattern: [0, 120],
-    showBadge: false,
-  });
+  if (Platform.OS !== 'android') return false;
+  try {
+    await Notifications.setNotificationChannelAsync(CHANNEL_ID, {
+      name,
+      importance: Notifications.AndroidImportance.DEFAULT,
+    });
+    channelReady = true;
+  } catch (e) {
+    channelReady = false;
+    console.warn('[kitty-journal] notification channel unavailable, using the default one:', e && e.message);
+  }
+  return channelReady;
 }
 
 /** @returns {Promise<'granted'|'denied'|'undetermined'>} */
@@ -76,7 +84,7 @@ export async function applyReminders(reminder, text) {
         weekday: item.weekday,
         hour: item.hour,
         minute: item.minute,
-        channelId: CHANNEL_ID,
+        ...(channelReady ? { channelId: CHANNEL_ID } : {}),
       },
     });
   }

@@ -100,6 +100,33 @@ const FAKE_LEAFLET = `(function(){
 })();`;
 
 console.log('boot');
+await step('Onboarding (C2): first run shows the intro; language switches it; pickers work; reminder is optional; finishing is remembered', async () => {
+  const btn = (name) => page.locator(`[role="button"][aria-label="${name}"]`).first();
+  const nextBtn = () => page.locator('[role="button"]').filter({ hasText: /^Next$/ }).first();
+  await waitForText('Welcome to your quiet corner');
+  // language: Persian re-renders the intro in Persian, English brings it back
+  await text('فارسی', { exact: true }).first().click();
+  await waitForText('به گوشهٔ آرام خودت خوش آمدی');
+  await text('English', { exact: true }).first().click();
+  await waitForText('Welcome to your quiet corner');
+  await nextBtn().click();
+  await waitForText('Private by default');
+  await nextBtn().click();
+  await waitForText('Make it yours');
+  await text('Dark', { exact: true }).first().click();
+  await text('Light', { exact: true }).first().click();
+  await nextBtn().click();
+  await waitForText('Gentle reminders?');
+  // permission denied: explained, nothing scheduled, can still continue
+  await page.evaluate(() => { window.__notifPerm = 'denied'; });
+  await text('Remind me to write', { exact: true }).first().click();
+  await waitForText('Notifications are turned off for Kitty Journal');
+  assert.equal(await page.evaluate(() => window.__scheduled.length), 0);
+  await text('Start writing', { exact: true }).first().click();
+  await waitForText('Recent entries');
+  assert.equal(JSON.parse(one("SELECT value FROM app_settings WHERE key='onboardingDone'").value), true);
+  assert.deepEqual(await errors(), []);
+});
 await step('app boots, migrations run, home renders without errors', async () => {
   await waitForText('Kitty Journal');
   await waitForText('Recent entries');
@@ -756,6 +783,132 @@ await step('Storage (B3): usage shown; unused files cleaned; broken photo record
   await page.evaluate(() => window.__alerts[window.__alerts.length - 1].buttons.find((b) => b.style === 'destructive').onPress());
   await waitForText('backup files deleted');
   assert.ok(!(await files()).some((u) => u.includes('/backups/')), 'backup files removed');
+  assert.deepEqual(await errors(), []);
+  await page.evaluate(() => window.__pressBack()); await wait(250);
+  await page.evaluate(() => window.__pressBack()); await wait(250);
+  await label('tab-home').click();
+  await waitForText('Recent entries');
+});
+
+console.log('B4: reminders');
+await step('Reminders (B4): permission, schedule per weekday, no duplicates on edit, off cancels, tap opens a new entry', async () => {
+  await label('tab-settings').click();
+  await text('Writing reminder', { exact: true }).first().click();
+  await waitForText('Remind me to write');
+  const toggle = page.locator('input[type="checkbox"][aria-label="Remind me to write"]');
+  const scheduled = () => page.evaluate(() => window.__scheduled.length);
+
+  // permission denied: stays off, explains why, schedules nothing
+  await page.evaluate(() => { window.__notifPerm = 'denied'; });
+  await toggle.click();
+  await waitForText('Notifications are turned off for Kitty Journal');
+  assert.equal(await scheduled(), 0);
+  assert.equal(await toggle.isChecked(), false);
+
+  // granted: one weekly notification per selected day, in 8:00 PM by default
+  await page.evaluate(() => { window.__notifPerm = 'granted'; });
+  await toggle.click();
+  await waitForText('Reminder set');
+  assert.equal(await scheduled(), 7);
+  const first = await page.evaluate(() => window.__scheduled[0].trigger);
+  assert.equal(first.hour, 20);
+  assert.equal(first.minute, 0);
+  assert.equal((await one("SELECT value FROM app_settings WHERE key='reminder'")).value.includes('"enabled":true'), true);
+
+  // editing re-plans from scratch: still 7, never 14
+  await text('Later', { exact: true }).last().click();
+  await wait(300);
+  assert.equal(await scheduled(), 7);
+  assert.equal((await page.evaluate(() => window.__scheduled[0].trigger)).minute, 15);
+  await page.locator('[role="button"][aria-label]').filter({ hasText: /^Sun$/ }).first().click();
+  await wait(300);
+  assert.equal(await scheduled(), 6);
+
+  // off cancels everything
+  await toggle.click();
+  await waitForText('Reminder turned off');
+  assert.equal(await scheduled(), 0);
+  assert.deepEqual(await errors(), []);
+
+  // tapping a reminder opens the new-entry editor
+  await page.evaluate(() => window.__pressBack()); await wait(250);
+  await page.evaluate(() => window.__pressBack()); await wait(250);
+  await page.evaluate(() => window.__tapNotification());
+  await page.waitForSelector('[data-testid="editor-frame"]');
+  await text('Done').click();
+  await label('tab-home').click();
+  await waitForText('Recent entries');
+});
+
+console.log('C1: app lock');
+await step('App lock (C1): set PIN, lock on return, wrong/right PIN, biometric, change PIN, turn off', async () => {
+  const pad = async (pin) => {
+    for (const d of pin) await page.locator(`[role="button"][aria-label="${d}"]`).first().click();
+    await page.locator('[role="button"][aria-label="Done"]').first().click();
+  };
+  const background = async () => { await page.evaluate(() => window.__setAppState('background')); await wait(100); await page.evaluate(() => window.__setAppState('active')); await wait(200); };
+  await label('tab-settings').click();
+  await text('App lock', { exact: true }).first().click();
+  await waitForText('Turn on app lock');
+  await text('Turn on app lock', { exact: true }).last().click();
+  await waitForText('Choose a PIN');
+  await pad('1234');
+  await waitForText('Repeat the PIN');
+  await pad('9999');                       // mismatch -> starts over
+  await waitForText('The two PINs do not match.');
+  await pad('1234');
+  await waitForText('Repeat the PIN');
+  await pad('1234');
+  await waitForText('App lock is on');
+  assert.ok(await page.evaluate(() => window.__secure.has('kj.pin.v1')), 'PIN record stored in the secure store');
+  assert.ok(!(await page.evaluate(() => JSON.stringify([...window.__secure.values()]))).includes('1234'), 'PIN itself is never stored');
+  assert.equal(JSON.parse(one("SELECT value FROM app_settings WHERE key='lockEnabled'").value), true);
+
+  // leaving the app locks it, and nothing of the journal is rendered
+  await background();
+  await waitForText('Kitty Journal is locked');
+  assert.ok(!(await bodyText()).includes('Recent entries') && !(await bodyText()).includes('App lock is on'), 'journal hidden while locked');
+  await pad('0000');
+  await waitForText('Wrong PIN.');
+  await pad('1234');
+  await waitForText('Turn off app lock');
+  assert.ok(!(await bodyText()).includes('Kitty Journal is locked'));
+
+  // fingerprint unlocks without a PIN
+  await page.locator('input[type="checkbox"][aria-label="Use fingerprint / face"]').click();
+  await wait(300);
+  await page.evaluate(() => { window.__bioCalls = 0; });
+  await background();
+  await waitFor(async () => (await page.evaluate(() => window.__bioCalls)) >= 1);
+  await waitForText('Turn off app lock');
+  assert.ok(!(await bodyText()).includes('Kitty Journal is locked'), 'biometric unlocked');
+  await page.locator('input[type="checkbox"][aria-label="Use fingerprint / face"]').click();
+  await wait(300);
+
+  // change PIN
+  await text('Change PIN', { exact: true }).last().click();
+  await waitForText('Enter your current PIN');
+  await pad('1234');
+  await waitForText('Choose a new PIN');
+  await pad('4321');
+  await waitForText('Repeat the PIN');
+  await pad('4321');
+  await waitForText('PIN changed');
+  await background();
+  await waitForText('Kitty Journal is locked');
+  await pad('1234');
+  await waitForText('Wrong PIN.');
+  await pad('4321');
+  await waitForText('Turn off app lock');
+
+  // turn off
+  await text('Turn off app lock', { exact: true }).last().click();
+  await waitForText('Enter your PIN');
+  await pad('4321');
+  await waitForText('App lock is off');
+  assert.ok(!(await page.evaluate(() => window.__secure.has('kj.pin.v1'))), 'PIN record removed');
+  await background();
+  assert.ok(!(await bodyText()).includes('Kitty Journal is locked'), 'no lock when off');
   assert.deepEqual(await errors(), []);
   await page.evaluate(() => window.__pressBack()); await wait(250);
   await page.evaluate(() => window.__pressBack()); await wait(250);
