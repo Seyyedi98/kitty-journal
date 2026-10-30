@@ -31,7 +31,6 @@ import {
 } from "react-native-safe-area-context";
 import {
   Animated,
-  GrowBar,
   Pop,
   PressableScale,
   fadeIn,
@@ -102,6 +101,7 @@ import StorageScreen from "./src/screens/StorageScreen";
 import ReminderScreen from "./src/screens/ReminderScreen";
 import LockScreen from "./src/screens/LockScreen";
 import OnboardingScreen from "./src/screens/OnboardingScreen";
+import InsightsScreen from "./src/screens/InsightsScreen";
 import AppLockScreen from "./src/screens/AppLockScreen";
 import { useAppLock } from "./src/hooks/useAppLock";
 import { initNotifications, onReminderTapped } from "./src/platform/notifications";
@@ -1438,147 +1438,6 @@ function EntryList({
         </Animated.View>
       ))}
     </View>
-  );
-}
-
-function InsightsScreen({
-  t,
-  c,
-  rtl,
-  language,
-  calendar,
-  today,
-  entries,
-  dailyMoods,
-}) {
-  const localeTag =
-    language === "fa" ? "fa-IR" : language === "tr" ? "tr-TR" : "en-US";
-  const num = (value) => new Intl.NumberFormat(localeTag).format(value);
-  const [trackWidth, setTrackWidth] = useState(0);
-  const monthOf = (key) => {
-    const p = getCalendarParts(key, calendar);
-    return `${p.year}-${p.month}`;
-  };
-  const thisMonth = monthOf(today);
-  const monthEntries = entries.filter(
-    (entry) => monthOf(entry.journal_date) === thisMonth,
-  );
-  const writingDays = new Set(monthEntries.map((entry) => entry.journal_date))
-    .size;
-  // Only days with a recorded mood are counted; a missing mood is never "neutral".
-  // One mood per day: the Home "How are you feeling today?" choice wins; otherwise
-  // the mood picked in that day's most recently edited entry is used.
-  const dayMoods = { ...dailyMoods };
-  const latestByDay = {};
-  for (const entry of entries) {
-    if (!entry.mood || dayMoods[entry.journal_date]) continue;
-    const prev = latestByDay[entry.journal_date];
-    if (!prev || String(entry.updated_at) > String(prev.updated_at)) latestByDay[entry.journal_date] = entry;
-  }
-  for (const [day, entry] of Object.entries(latestByDay)) dayMoods[day] = entry.mood;
-  const moodCounts = MOODS.map((mood) => ({
-    ...mood,
-    count: Object.values(dayMoods).filter((value) => value === mood.key).length,
-  }));
-  const moodTotal = moodCounts.reduce((sum, mood) => sum + mood.count, 0);
-  const stats = [
-    [entries.length, t.entries, BookOpen],
-    [entries.filter((entry) => entry.favorite).length, t.favorites, Star],
-    [moodTotal, t.moods, Heart],
-  ];
-  const monthStats = [
-    [monthEntries.length, t.thisMonthEntries],
-    [writingDays, t.writingDays],
-  ];
-  return (
-    <ScrollView contentContainerStyle={styles.pageContent}>
-      <Text style={[styles.eyebrow, { color: c.muted }]}>{t.insights}</Text>
-      <Text style={[styles.pageTitle, { color: c.ink }]}>{t.insights}</Text>
-      <View style={[styles.insightGrid, rtl && styles.rowReverse]}>
-        {stats.map(([number, label, Icon], i) => (
-          <View
-            key={`stat-${i}`}
-            style={[
-              styles.insightCard,
-              { backgroundColor: c.card, borderColor: c.line },
-            ]}
-          >
-            <Icon size={19} color={c.sageDark} />
-            <Text style={[styles.statNumber, { color: c.sageDark }]}>
-              {num(number)}
-            </Text>
-            <Text style={[styles.statLabel, { color: c.muted }]}>{label}</Text>
-          </View>
-        ))}
-      </View>
-      <View style={[styles.insightGrid, rtl && styles.rowReverse]}>
-        {monthStats.map(([number, label], i) => (
-          <View
-            key={`month-${i}`}
-            style={[
-              styles.insightCard,
-              { backgroundColor: c.card, borderColor: c.line },
-            ]}
-          >
-            <Text style={[styles.statNumber, { color: c.sageDark }]}>
-              {num(number)}
-            </Text>
-            <Text style={[styles.statLabel, { color: c.muted }]}>{label}</Text>
-          </View>
-        ))}
-      </View>
-      <View
-        style={[
-          styles.settingGroup,
-          { backgroundColor: c.card, borderColor: c.line },
-        ]}
-      >
-        <Text
-          style={[
-            styles.settingTitle,
-            { color: c.ink, textAlign: rtl ? "right" : "left" },
-          ]}
-        >
-          {t.moodDistribution}
-        </Text>
-        {moodTotal === 0 ? (
-          <Text style={[styles.settingNote, { color: c.muted }]}>
-            {t.noMoodData}
-          </Text>
-        ) : (
-          moodCounts.map((mood) => (
-            <View
-              key={mood.key}
-              style={[styles.distRow, rtl && styles.rowReverse]}
-              accessible
-              accessibilityLabel={`${t[mood.key]}: ${num(mood.count)}`}
-            >
-              <Text style={styles.distFace}>{mood.face}</Text>
-              <Text style={[styles.distLabel, { color: c.muted }]}>
-                {t[mood.key]}
-              </Text>
-              <View
-                style={[styles.distTrack, { backgroundColor: c.accentSoft }]}
-                onLayout={(e) => setTrackWidth(e.nativeEvent.layout.width)}
-              >
-                <GrowBar
-                  fraction={mood.count / moodTotal}
-                  trackWidth={trackWidth}
-                  color={c.accent}
-                  rtl={rtl}
-                />
-              </View>
-              <Text style={[styles.distCount, { color: c.ink }]}>
-                {num(mood.count)}
-              </Text>
-            </View>
-          ))
-        )}
-        <Text style={[styles.settingNote, { color: c.muted, marginTop: 0 }]}>
-          {t.insightsHint}
-        </Text>
-      </View>
-    </ScrollView>
   );
 }
 

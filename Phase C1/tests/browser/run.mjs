@@ -100,6 +100,33 @@ const FAKE_LEAFLET = `(function(){
 })();`;
 
 console.log('boot');
+await step('Onboarding (C2): first run shows the intro; language switches it; pickers work; reminder is optional; finishing is remembered', async () => {
+  const btn = (name) => page.locator(`[role="button"][aria-label="${name}"]`).first();
+  const nextBtn = () => page.locator('[role="button"]').filter({ hasText: /^Next$/ }).first();
+  await waitForText('Welcome to your quiet corner');
+  // language: Persian re-renders the intro in Persian, English brings it back
+  await text('فارسی', { exact: true }).first().click();
+  await waitForText('به گوشهٔ آرام خودت خوش آمدی');
+  await text('English', { exact: true }).first().click();
+  await waitForText('Welcome to your quiet corner');
+  await nextBtn().click();
+  await waitForText('Private by default');
+  await nextBtn().click();
+  await waitForText('Make it yours');
+  await text('Dark', { exact: true }).first().click();
+  await text('Light', { exact: true }).first().click();
+  await nextBtn().click();
+  await waitForText('Gentle reminders?');
+  // permission denied: explained, nothing scheduled, can still continue
+  await page.evaluate(() => { window.__notifPerm = 'denied'; });
+  await text('Remind me to write', { exact: true }).first().click();
+  await waitForText('Notifications are turned off for Kitty Journal');
+  assert.equal(await page.evaluate(() => window.__scheduled.length), 0);
+  await text('Start writing', { exact: true }).first().click();
+  await waitForText('Recent entries');
+  assert.equal(JSON.parse(one("SELECT value FROM app_settings WHERE key='onboardingDone'").value), true);
+  assert.deepEqual(await errors(), []);
+});
 await step('app boots, migrations run, home renders without errors', async () => {
   await waitForText('Kitty Journal');
   await waitForText('Recent entries');

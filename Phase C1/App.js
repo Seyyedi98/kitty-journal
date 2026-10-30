@@ -77,7 +77,7 @@ import FilterBar, {
   applyFilters,
   hasActiveFilters,
 } from "./src/components/FilterBar";
-import { ScrollView, Text, TextInput, setUiFontsLoaded, setUiLanguage } from "./src/ui";
+import { BottomInsetContext, ScrollView, Text, TextInput, setUiFontsLoaded, setUiLanguage } from "./src/ui";
 import { BASE, DARK, MOODS } from "./src/theme";
 import { runMigrations } from "./src/db/migrations";
 import {
@@ -101,6 +101,7 @@ import BackupScreen from "./src/screens/BackupScreen";
 import StorageScreen from "./src/screens/StorageScreen";
 import ReminderScreen from "./src/screens/ReminderScreen";
 import LockScreen from "./src/screens/LockScreen";
+import OnboardingScreen from "./src/screens/OnboardingScreen";
 import AppLockScreen from "./src/screens/AppLockScreen";
 import { useAppLock } from "./src/hooks/useAppLock";
 import { initNotifications, onReminderTapped } from "./src/platform/notifications";
@@ -175,6 +176,7 @@ function AppShell() {
   const [subScreen, setSubScreen] = useState(null); // null | "trash" | "tags" | "backup" | "storage" | "reminders" | "lock"
   const [trashCount, setTrashCount] = useState(0);
   const [ready, setReady] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const [undo, setUndo] = useState(null);
   const undoTimer = useRef(null);
@@ -218,6 +220,15 @@ function AppShell() {
       try {
         const saved = await loadSettings(db);
         if (cancelled) return;
+        // First run only: a journal that already has content or settings never sees the intro.
+        if (saved.onboardingDone !== true) {
+          const hasData =
+            Boolean(saved.language) ||
+            Boolean(await db.getFirstAsync("SELECT 1 AS x FROM entries LIMIT 1"));
+          if (cancelled) return;
+          if (hasData) saveSetting(db, "onboardingDone", true).catch(() => {});
+          else setShowOnboarding(true);
+        }
         const lang = LANGUAGES.includes(saved.language) ? saved.language : "en";
         const cal = CALENDAR_TYPES.includes(saved.calendarType)
           ? saved.calendarType
@@ -690,6 +701,31 @@ function AppShell() {
       </View>
     );
 
+  if (showOnboarding && ready)
+    return (
+      <View style={[styles.safeRoot, { backgroundColor: c.bg }]}>
+        <ExpoStatusBar style={dark ? "light" : "dark"} backgroundColor={c.bg} translucent={false} />
+        <OnboardingScreen
+          db={db}
+          t={t}
+          c={c}
+          rtl={rtl}
+          insets={insets}
+          runExternal={lock.runExternal}
+          language={language}
+          changeLanguage={changeLanguage}
+          calendarType={calendarType}
+          changeCalendar={changeCalendar}
+          appearance={appearance}
+          setAppearance={changeAppearance}
+          onFinish={() => {
+            persistSetting("onboardingDone", true);
+            setShowOnboarding(false);
+          }}
+        />
+      </View>
+    );
+
   return (
     <View
       style={[
@@ -736,7 +772,9 @@ function AppShell() {
                 {
                   paddingHorizontal: pagePadding,
                   maxWidth: contentWidth,
-                  paddingBottom: (isLandscapeTablet ? 24 : 96) + insets.bottom,
+                  // Portrait: content runs to the bottom edge and the dock floats over it
+                  // (each page's ScrollView adds the dock clearance itself).
+                  paddingBottom: isLandscapeTablet ? 24 + insets.bottom : 0,
                 },
               ]}
             >
@@ -745,7 +783,9 @@ function AppShell() {
                 entering={fadeIn(0, 240)}
                 style={{ flex: 1 }}
               >
-                {content}
+                <BottomInsetContext.Provider value={isLandscapeTablet ? 0 : 96 + insets.bottom}>
+                  {content}
+                </BottomInsetContext.Provider>
               </Animated.View>
             </View>
           </View>

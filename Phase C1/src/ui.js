@@ -77,13 +77,26 @@ export function TextInput(props) {
  * Drop-in ScrollView with both scroll indicators permanently hidden
  * (scrolling itself is unchanged). Use this instead of react-native's.
  */
+// Space the floating dock needs below scrolling content. The content area itself runs all the way
+// to the bottom edge (the dock floats over it), so each page's ScrollView adds this to its own bottom
+// padding and the last rows can still be scrolled clear of the dock. Popups and full-screen
+// overlays provide 0.
+export const BottomInsetContext = React.createContext(0);
+
 export const ScrollView = React.forwardRef(function ScrollView(props, ref) {
+  const inset = React.useContext(BottomInsetContext);
+  let contentContainerStyle = props.contentContainerStyle;
+  if (inset) {
+    const flat = StyleSheet.flatten(contentContainerStyle) || {};
+    contentContainerStyle = { ...flat, paddingBottom: (flat.paddingBottom || 0) + inset };
+  }
   return (
     <NativeScrollView
       ref={ref}
       showsVerticalScrollIndicator={false}
       showsHorizontalScrollIndicator={false}
       {...props}
+      contentContainerStyle={contentContainerStyle}
     />
   );
 });

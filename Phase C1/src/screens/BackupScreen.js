@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, Modal, StyleSheet, View } from 'react-native';
 import { Archive, Download, FileText, FolderOpen, GitMerge, RefreshCw, Share2 } from 'lucide-react-native';
-import { ScrollView, Text } from '../ui';
+import { BottomInsetContext, ScrollView, Text } from '../ui';
 import { Animated, fadeInDown } from '../motion';
 import { Button, Card, Note, SubHeader } from '../components/common';
 import { loadSettings, saveSetting } from '../db/repository';
@@ -245,6 +245,7 @@ export default function BackupScreen({ db, t, c, rtl, language, calendar, onBack
     </ScrollView>
 
       <Modal visible={popupOpen} transparent animationType="fade" onRequestClose={closePopup}>
+        <BottomInsetContext.Provider value={0}>
         <View style={s.backdrop}>
           <View style={[s.sheet, { backgroundColor: c.paper, borderColor: c.line }]}>
             <ScrollView contentContainerStyle={s.sheetBody} keyboardShouldPersistTaps="handled">
@@ -311,6 +312,7 @@ export default function BackupScreen({ db, t, c, rtl, language, calendar, onBack
             </ScrollView>
           </View>
         </View>
+        </BottomInsetContext.Provider>
       </Modal>
     </>
   );

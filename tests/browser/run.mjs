@@ -725,6 +725,28 @@ await step('Insights mood distribution counts a mood picked in the editor; calen
   await label('tab-calendar').click();
   assert.equal(await page.locator('[aria-label="New entry"]').count(), 1, 'only the floating add button remains');
 });
+console.log('C3: insights');
+await step('Insights (C3): range switch, writing days, words, monthly/weekday charts, tags, mood note', async () => {
+  await label('tab-insights').click();
+  await waitForText('Words written');
+  const body = await bodyText();
+  for (const h of ['Entries by month', 'Writing by weekday', 'Mood distribution', 'Words per entry']) assert.ok(body.includes(h), h);
+  assert.ok(body.includes('Days without a mood are left out'), 'honest-data note');
+  // default range is 30 days; 7 days narrows "of N days" to 7
+  assert.ok(/of 30 days/.test(body), 'default 30-day range');
+  await text('7 days', { exact: true }).first().click();
+  await waitFor(async () => /of 7 days/.test(await bodyText()));
+  await text('1 year', { exact: true }).first().click();
+  await waitFor(async () => /of 365 days/.test(await bodyText()));
+  await text('90 days', { exact: true }).first().click();
+  await waitFor(async () => /of 90 days/.test(await bodyText()));
+  await text('All time', { exact: true }).first().click();
+  await waitFor(async () => !/of 7 days|of 365 days|of 90 days/.test(await bodyText()));
+  assert.ok((await bodyText()).includes('Weekly mood'), 'weekly mood chart when moods were recorded');
+  assert.deepEqual(await errors(), []);
+  await label('tab-home').click();
+  await waitForText('Recent entries');
+});
 await step('Restore (B2b): replace makes a safety backup first and swaps the journal', async () => {
   raw.exec("UPDATE entries SET created_at='2026-10-01T10:00:00.000Z' WHERE length(created_at)<20; UPDATE entries SET updated_at='2026-10-01T10:00:00.000Z' WHERE length(updated_at)<20");
   raw.exec("INSERT OR IGNORE INTO entries (uuid,title,body,journal_date,favorite,pinned,created_at,updated_at) VALUES ('b2b0000000000000000000000000000a','restore me','text','2026-10-22',0,0,'2026-10-22T10:00:00.000Z','2026-10-22T10:00:00.000Z')");
