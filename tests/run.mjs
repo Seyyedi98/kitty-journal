@@ -9,6 +9,7 @@ const load = async (p) => {
   return { ...(typeof m.default === 'object' && m.default ? m.default : {}), ...m };
 };
 const { translations } = await load('../src/i18n/index.js');
+const { groupPlaces, distanceMeters } = await load('../src/utils/mapPlaces.js');
 const { foldText, matchesQuery, countWords, tagKey, cleanTagName } = await load('../src/utils/text.js');
 const { runMigrations, LATEST_VERSION } = await load('../src/db/migrations.js');
 const repo = await load('../src/db/repository.js');
@@ -236,6 +237,34 @@ await test('Esfand length: 30 in leap years (1403), 29 otherwise (1404)', () => 
 await test('getCalendarParts / calendarDateKey are inverse', () => {
   const parts = getCalendarParts('2026-10-23', 'solarHijri');
   assert.equal(calendarDateKey(parts.year, parts.month, parts.day, 'solarHijri'), '2026-10-23');
+});
+
+console.log('map places');
+await test('groupPlaces: two spots in the same house become one marker, even across a rounding boundary', () => {
+  // ~25 m apart, but on opposite sides of a 3-decimal rounding edge (41.0004 vs 41.0006 -> "41.000" / "41.001")
+  const places = [
+    { id: 1, entry_id: 1, latitude: 41.00049, longitude: 29.0, name: 'Home', journal_date: '2026-10-02' },
+    { id: 2, entry_id: 2, latitude: 41.00061, longitude: 29.00005, name: '', journal_date: '2026-10-01' },
+  ];
+  const { groups } = groupPlaces(places);
+  assert.equal(groups.length, 1);
+  assert.equal(groups[0].entries.length, 2);
+  assert.equal(groups[0].name, 'Home');
+  assert.ok(distanceMeters(groups[0].latitude, groups[0].longitude, 41.00055, 29.000025) < 5, 'marker at the average position');
+});
+await test('groupPlaces: places a few hundred metres apart stay separate; missing coordinates are counted', () => {
+  const { groups, withoutCoords } = groupPlaces([
+    { id: 1, entry_id: 1, latitude: 41.0, longitude: 29.0 },
+    { id: 2, entry_id: 2, latitude: 41.004, longitude: 29.0 }, // ~445 m
+    { id: 3, entry_id: 3, latitude: null, longitude: null },
+  ]);
+  assert.equal(groups.length, 2);
+  assert.equal(withoutCoords, 1);
+});
+await test('groupPlaces: a chain of places is not merged into one endless cluster', () => {
+  const chain = Array.from({ length: 6 }, (_, i) => ({ id: i + 1, entry_id: i + 1, latitude: 41.0 + i * 0.0009, longitude: 29.0 })); // 100 m steps
+  const { groups } = groupPlaces(chain);
+  assert.ok(groups.length >= 3, 'got ' + groups.length);
 });
 
 console.log(`\n${passed} passed, ${failures.length} failed`);

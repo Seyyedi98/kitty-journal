@@ -11,29 +11,68 @@ const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
 const IMG_RE = /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/;
 const COLOR_RE = /^#[0-9a-fA-F]{3,8}$/;
 
+/** Places closer than this belong to the same spot (GPS jitter, two rooms of one house, a garden...). */
+export const CLUSTER_RADIUS_M = 150;
+
+/** Distance in metres between two coordinates (haversine). */
+export function distanceMeters(lat1, lon1, lat2, lon2) {
+  const rad = Math.PI / 180;
+  const dLat = (lat2 - lat1) * rad;
+  const dLon = (lon2 - lon1) * rad;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * rad) * Math.cos(lat2 * rad) * Math.sin(dLon / 2) ** 2;
+  return 2 * 6371000 * Math.asin(Math.min(1, Math.sqrt(a)));
+}
+
 /**
- * Group places that are (almost) the same spot — rounded to 3 decimals (~100 m) —
- * so one marker stands for every entry written there. Places without
- * coordinates cannot be drawn; they are counted in `withoutCoords`.
+ * Group places that are (almost) the same spot — within CLUSTER_RADIUS_M of the first place of the
+ * group — so one marker stands for every entry written there, however the GPS happened to round.
+ * The marker sits at the average position of its places. Places without coordinates cannot be
+ * drawn; they are counted in `withoutCoords`.
  * @param {Array} places rows from listLocations (newest first)
  */
 export function groupPlaces(places) {
-  const map = new Map();
+  const groups = [];
   let withoutCoords = 0;
   for (const p of places || []) {
     if (!isNum(p.latitude) || !isNum(p.longitude) || Math.abs(p.latitude) > 90 || Math.abs(p.longitude) > 180) {
       withoutCoords += 1;
       continue;
     }
-    const key = `${p.latitude.toFixed(3)},${p.longitude.toFixed(3)}`;
-    let g = map.get(key);
-    if (!g) {
-      g = { key, latitude: p.latitude, longitude: p.longitude, name: p.name || p.address || '', entries: [] };
-      map.set(key, g);
+    // Nearest existing group whose first place is within the radius.
+    let best = null;
+    let bestD = Infinity;
+    for (const g of groups) {
+      const d = distanceMeters(g.anchorLat, g.anchorLng, p.latitude, p.longitude);
+      if (d <= CLUSTER_RADIUS_M && d < bestD) {
+        best = g;
+        bestD = d;
+      }
     }
-    g.entries.push({ location_id: p.id, entry_id: p.entry_id, title: p.entry_title || '', journal_date: p.journal_date, placeName: p.name || '' });
+    if (!best) {
+      best = {
+        key: `${p.latitude.toFixed(5)},${p.longitude.toFixed(5)}`,
+        anchorLat: p.latitude,
+        anchorLng: p.longitude,
+        latitude: p.latitude,
+        longitude: p.longitude,
+        name: p.name || p.address || '',
+        entries: [],
+        sumLat: 0,
+        sumLng: 0,
+      };
+      groups.push(best);
+    }
+    best.sumLat += p.latitude;
+    best.sumLng += p.longitude;
+    best.entries.push({ location_id: p.id, entry_id: p.entry_id, title: p.entry_title || '', journal_date: p.journal_date, placeName: p.name || '' });
+    best.latitude = best.sumLat / best.entries.length;
+    best.longitude = best.sumLng / best.entries.length;
+    if (!best.name) best.name = p.name || p.address || '';
   }
-  return { groups: [...map.values()], withoutCoords };
+  return {
+    groups: groups.map(({ anchorLat, anchorLng, sumLat, sumLng, ...g }) => g),
+    withoutCoords,
+  };
 }
 
 /** `<` is escaped so data can never close the surrounding <script>. */

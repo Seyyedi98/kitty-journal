@@ -86,7 +86,8 @@ export const BottomInsetContext = React.createContext(0);
 export const ScrollView = React.forwardRef(function ScrollView(props, ref) {
   const inset = React.useContext(BottomInsetContext);
   let contentContainerStyle = props.contentContainerStyle;
-  if (inset) {
+  // Only vertical page scrollers need dock clearance; horizontal strips (filter chips etc.) must not.
+  if (inset && !props.horizontal) {
     const flat = StyleSheet.flatten(contentContainerStyle) || {};
     contentContainerStyle = { ...flat, paddingBottom: (flat.paddingBottom || 0) + inset };
   }
