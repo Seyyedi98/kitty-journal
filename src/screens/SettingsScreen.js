@@ -4,6 +4,7 @@ import { Archive, Bell, ChevronLeft, ChevronRight, Heart, HardDrive, Lock, Tag, 
 import { ScrollView, Text } from '../ui';
 import { Card, LinkRow, Segmented } from '../components/common';
 import { fmt } from '../i18n';
+import ThemePicker from '../components/ThemePicker';
 
 /**
  * Settings. `onOpen(name)` navigates to a sub-screen; the rows shown here are
@@ -19,6 +20,9 @@ export default function SettingsScreen({
   changeCalendar,
   appearance,
   setAppearance,
+  theme,
+  setTheme,
+  dark,
   onOpen,
   trashCount = 0,
   lockEnabled = false,
@@ -72,6 +76,10 @@ export default function SettingsScreen({
             { value: 'system', label: t.system },
           ]}
         />
+      </Card>
+
+      <Card title={t.theme} c={c} rtl={rtl}>
+        <ThemePicker t={t} c={c} rtl={rtl} value={theme} onChange={setTheme} dark={dark} />
       </Card>
 
       <Card title={t.settingsData} c={c} rtl={rtl} style={{ gap: 0 }}>

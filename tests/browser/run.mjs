@@ -870,7 +870,9 @@ await step('App lock (C1): set PIN, lock on return, wrong/right PIN, biometric, 
   };
   const background = async () => { await page.evaluate(() => window.__setAppState('background')); await wait(100); await page.evaluate(() => window.__setAppState('active')); await wait(200); };
   await label('tab-settings').click();
+  await page.setViewportSize({ width: 412, height: 1700 }); await wait(400); // harness root grows with content; tall viewport keeps every row above the dock
   await text('App lock', { exact: true }).first().click();
+  await page.setViewportSize({ width: 412, height: 860 }); await wait(300);
   await waitForText('Turn on app lock');
   await text('Turn on app lock', { exact: true }).last().click();
   await waitForText('Choose a PIN');
@@ -934,6 +936,21 @@ await step('App lock (C1): set PIN, lock on return, wrong/right PIN, biometric, 
   assert.deepEqual(await errors(), []);
   await page.evaluate(() => window.__pressBack()); await wait(250);
   await page.evaluate(() => window.__pressBack()); await wait(250);
+  await label('tab-home').click();
+  await waitForText('Recent entries');
+});
+
+await step('colour theme can be chosen and persists', async () => {
+  await label('tab-settings').click();
+  await waitForText('Color theme');
+  const before = await page.evaluate(() => getComputedStyle(document.body).backgroundColor + '|' + (document.querySelector('[data-testid="theme-rose"] > div')||{style:{}}).style.backgroundColor);
+  await page.locator('[data-testid="theme-rose"]').click();
+  await waitFor(() => (one("SELECT value FROM app_settings WHERE key='theme'") || {}).value === '"rose"');
+  const after = await page.evaluate(() => document.querySelector('[data-testid="theme-rose"] > div').getAttribute('style') || '');
+  assert.ok(/border-width: 3px|border: 3px/.test(after) || after !== before, 'selected swatch styled');
+  await page.locator('[data-testid="theme-sage"]').click();
+  await waitFor(() => (one("SELECT value FROM app_settings WHERE key='theme'") || {}).value === '"sage"');
+  assert.deepEqual(await errors(), []);
   await label('tab-home').click();
   await waitForText('Recent entries');
 });

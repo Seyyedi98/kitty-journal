@@ -77,7 +77,7 @@ import FilterBar, {
   hasActiveFilters,
 } from "./src/components/FilterBar";
 import { BottomInsetContext, ScrollView, Text, TextInput, setUiFontsLoaded, setUiLanguage } from "./src/ui";
-import { BASE, DARK, MOODS } from "./src/theme";
+import { DEFAULT_THEME, MOODS, THEME_KEYS, buildPalette, isLightPalette } from "./src/theme";
 import { runMigrations } from "./src/db/migrations";
 import {
   listEntries,
@@ -177,6 +177,7 @@ function AppShell() {
   const [trashCount, setTrashCount] = useState(0);
   const [ready, setReady] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [theme, setTheme] = useState(DEFAULT_THEME);
   const [loadError, setLoadError] = useState(false);
   const [undo, setUndo] = useState(null);
   const undoTimer = useRef(null);
@@ -194,7 +195,7 @@ function AppShell() {
   const dark =
     appearance === "dark" ||
     (appearance === "system" && systemScheme === "dark");
-  const c = dark ? DARK : BASE;
+  const c = useMemo(() => buildPalette(theme, dark), [theme, dark]);
   const isTablet = shortestSide >= 600;
   const isLandscapeTablet = isTablet && width > height;
   const contentWidth = Math.min(width - (isTablet ? 88 : 0), 1060);
@@ -239,6 +240,7 @@ function AppShell() {
         setLanguage(lang);
         setCalendarType(cal);
         setAppearance(look);
+        if (THEME_KEYS.includes(saved.theme)) setTheme(saved.theme);
         const effective =
           cal === "default" ? (lang === "fa" ? "solarHijri" : "gregorian") : cal;
         setCalendarMonth(getCalendarParts(dateKey(), effective));
@@ -378,6 +380,11 @@ function AppShell() {
           : "gregorian"
         : value;
     setCalendarMonth(getCalendarParts(selectedDate, nextCalendar));
+  };
+  const changeTheme = (value) => {
+    if (!THEME_KEYS.includes(value)) return;
+    setTheme(value);
+    persistSetting("theme", value);
   };
   const changeAppearance = (value) => {
     setAppearance(value);
@@ -601,6 +608,9 @@ function AppShell() {
         changeCalendar={changeCalendar}
         appearance={appearance}
         setAppearance={changeAppearance}
+        theme={theme}
+        setTheme={changeTheme}
+        dark={dark}
         onOpen={setSubScreen}
         trashCount={trashCount}
         lockEnabled={lock.config.enabled}
@@ -718,6 +728,9 @@ function AppShell() {
           changeCalendar={changeCalendar}
           appearance={appearance}
           setAppearance={changeAppearance}
+          theme={theme}
+          setTheme={changeTheme}
+          dark={dark}
           onFinish={() => {
             persistSetting("onboardingDone", true);
             setShowOnboarding(false);
@@ -909,7 +922,7 @@ function HomeScreen({
               backgroundColor:
                 dailyMood === mood.key
                   ? c.card
-                  : c.paper === BASE.paper
+                  : isLightPalette(c)
                     ? "#FFFFFF80"
                     : c.card,
               borderColor: dailyMood === mood.key ? c.sageDark : "transparent",
@@ -988,7 +1001,7 @@ function HomeScreen({
             style={[
               styles.moodCard,
               {
-                backgroundColor: darkenOr(c.accentSoft, c.card),
+                backgroundColor: fieldBg(c),
                 borderColor: c.line,
               },
             ]}
@@ -1078,7 +1091,7 @@ function HomeScreen({
             style={[
               styles.searchBox,
               {
-                backgroundColor: darkenOr(c.accentSoft, c.card),
+                backgroundColor: fieldBg(c),
                 borderColor: c.line,
               },
               rtl && styles.rowReverse,
@@ -1441,8 +1454,9 @@ function EntryList({
   );
 }
 
-function darkenOr(lightColor, darkColor) {
-  return lightColor === BASE.accentSoft ? "#F1F3EB" : darkColor;
+// Search/filter field background: a soft tint of the accent in light mode, the card colour in dark mode.
+function fieldBg(c) {
+  return isLightPalette(c) ? c.accentSoft : c.card;
 }
 
 export default function App() {

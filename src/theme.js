@@ -8,7 +8,7 @@ export const MOODS = [
 
 export const BASE = {
   ink: '#38352F',
-  muted: '#898276',
+  muted: '#6F695E',
   paper: '#FBF8F0',
   card: '#FFFDF8',
   line: '#EAE3D5',
@@ -20,7 +20,7 @@ export const BASE = {
   cream: '#FBF8F0',
   dockBorder: '#E8DFD1',
   brown: '#8B5A2B',
-  accent: '#778B6D',
+  accent: '#5E7355',
   accentSoft: '#F1F3EB',
   write: '#F8EEE5',
   white: '#FFFFFF',
@@ -119,4 +119,9 @@ export function contrastRatio(a, b) {
   };
   const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x);
   return (hi + 0.05) / (lo + 0.05);
+}
+
+/** True for a light palette (dark text on a light paper). Theme-independent way to ask "is this dark mode?". */
+export function isLightPalette(palette) {
+  return contrastRatio(palette.paper, '#000000') > contrastRatio(palette.paper, '#FFFFFF');
 }

@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { BookOpen, Bell, Lock, Palette } from 'lucide-react-native';
 import { ScrollView, Text } from '../ui';
 import { Button, Note, Segmented } from '../components/common';
+import ThemePicker from '../components/ThemePicker';
 import { saveSetting } from '../db/repository';
 import { DEFAULT_REMINDER } from '../services/reminders';
 import { applyReminders, requestPermission } from '../platform/notifications';
@@ -12,7 +13,7 @@ const PAGES = 4;
 
 /** First-run welcome: language, privacy, look, optional reminder. Everything is skippable. */
 export default function OnboardingScreen({
-  db, t, c, rtl, insets, language, changeLanguage, calendarType, changeCalendar, appearance, setAppearance, onFinish,
+  db, t, c, rtl, insets, language, changeLanguage, calendarType, changeCalendar, appearance, setAppearance, theme, setTheme, dark, onFinish,
   runExternal = (fn) => fn(),
 }) {
   const [page, setPage] = useState(0);
@@ -104,6 +105,8 @@ export default function OnboardingScreen({
                 { value: 'system', label: t.system },
               ]}
             />
+            <Text style={{ color: c.ink, fontSize: 12, fontWeight: '700', textAlign: align, marginTop: 6 }}>{t.theme}</Text>
+            <ThemePicker t={t} c={c} rtl={rtl} value={theme} onChange={setTheme} dark={dark} />
           </View>
         ) : null}
 

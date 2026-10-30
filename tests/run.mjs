@@ -14,6 +14,7 @@ const { foldText, matchesQuery, countWords, tagKey, cleanTagName } = await load(
 const { runMigrations, LATEST_VERSION } = await load('../src/db/migrations.js');
 const repo = await load('../src/db/repository.js');
 const { gregorianToJalali, jalaliToGregorian, jalaliMonthLength, calendarDateKey, getCalendarParts } = await load('../src/calendar.js');
+const { buildPalette, THEME_KEYS, contrastRatio } = await load('../src/theme.js');
 const { applyFilters, EMPTY_FILTERS } = await load('../src/utils/filters.js');
 
 function makeDb(raw = new DatabaseSync(':memory:')) {
@@ -267,5 +268,16 @@ await test('groupPlaces: a chain of places is not merged into one endless cluste
   assert.ok(groups.length >= 3, 'got ' + groups.length);
 });
 
+await test('themes: every theme/mode keeps readable contrast', () => {
+  for (const k of THEME_KEYS) for (const dark of [false, true]) {
+    const p = buildPalette(k, dark);
+    const chk = (a, b, min, name) => assert.ok(contrastRatio(a, b) >= min, `${k}/${dark ? 'dark' : 'light'} ${name} ${contrastRatio(a, b).toFixed(2)}`);
+    chk(p.ink, p.paper, 7, 'ink/paper'); chk(p.ink, p.card, 7, 'ink/card');
+    chk(p.muted, p.paper, 4.5, 'muted/paper'); chk(p.onAccent, p.accent, 4.5, 'onAccent/accent');
+  }
+});
+await test('themes: unknown key falls back to default', () => {
+  assert.deepEqual(buildPalette('nope', false), buildPalette('sage', false));
+});
 console.log(`\n${passed} passed, ${failures.length} failed`);
 if (failures.length) { console.log('Failed:', failures.join('; ')); process.exit(1); }
