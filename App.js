@@ -77,7 +77,7 @@ import FilterBar, {
   applyFilters,
   hasActiveFilters,
 } from "./src/components/FilterBar";
-import { ScrollView, Text, TextInput, setUiFontsLoaded, setUiLanguage } from "./src/ui";
+import { BottomInsetContext, ScrollView, Text, TextInput, setUiFontsLoaded, setUiLanguage } from "./src/ui";
 import { BASE, DARK, MOODS } from "./src/theme";
 import { runMigrations } from "./src/db/migrations";
 import {
@@ -772,7 +772,9 @@ function AppShell() {
                 {
                   paddingHorizontal: pagePadding,
                   maxWidth: contentWidth,
-                  paddingBottom: (isLandscapeTablet ? 24 : 96) + insets.bottom,
+                  // Portrait: content runs to the bottom edge and the dock floats over it
+                  // (each page's ScrollView adds the dock clearance itself).
+                  paddingBottom: isLandscapeTablet ? 24 + insets.bottom : 0,
                 },
               ]}
             >
@@ -781,7 +783,9 @@ function AppShell() {
                 entering={fadeIn(0, 240)}
                 style={{ flex: 1 }}
               >
-                {content}
+                <BottomInsetContext.Provider value={isLandscapeTablet ? 0 : 96 + insets.bottom}>
+                  {content}
+                </BottomInsetContext.Provider>
               </Animated.View>
             </View>
           </View>
