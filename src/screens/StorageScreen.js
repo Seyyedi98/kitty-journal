@@ -1,5 +1,6 @@
+import { Dialog } from '../platform/dialog';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { Eraser, HardDrive, ScanSearch, Trash2 } from 'lucide-react-native';
 import { ScrollView, Text } from '../ui';
 import { Button, Card, Note, SubHeader } from '../components/common';
@@ -64,7 +65,7 @@ export default function StorageScreen({ db, t, c, rtl, language, onBack, onChang
       onChanged?.();
     } catch (e) {
       console.warn('[kitty-journal] storage action failed:', e);
-      Alert.alert(t.somethingWrong, t.saveFailedHint);
+      Dialog.alert(t.somethingWrong, t.saveFailedHint);
     } finally {
       setBusy(null);
     }
@@ -78,7 +79,7 @@ export default function StorageScreen({ db, t, c, rtl, language, onBack, onChang
     });
 
   const removeBroken = () =>
-    Alert.alert(t.storageRemoveBroken, t.storageRemoveBrokenConfirm, [
+    Dialog.alert(t.storageRemoveBroken, t.storageRemoveBrokenConfirm, [
       { text: t.cancel, style: 'cancel' },
       {
         text: t.storageRemoveBroken,
@@ -100,7 +101,7 @@ export default function StorageScreen({ db, t, c, rtl, language, onBack, onChang
 
   const clearBackups = () => {
     if (!stats || !stats.backups.count) return;
-    Alert.alert(t.storageClearBackups, t.storageClearBackupsConfirm, [
+    Dialog.alert(t.storageClearBackups, t.storageClearBackupsConfirm, [
       { text: t.cancel, style: 'cancel' },
       {
         text: t.storageClearBackups,

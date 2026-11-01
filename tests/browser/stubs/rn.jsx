@@ -122,3 +122,14 @@ export const useColorScheme = () => 'light';
 export const useWindowDimensions = () => { const [d, setD] = React.useState({ width: innerWidth, height: innerHeight }); React.useEffect(() => { const f = () => setD({ width: innerWidth, height: innerHeight }); addEventListener('resize', f); return () => removeEventListener('resize', f); }, []); return { ...d, scale: 2, fontScale: 1 }; };
 export const I18nManager = { isRTL: false };
 export const AccessibilityInfo = { isReduceMotionEnabled: async () => false, addEventListener: () => ({ remove() {} }) };
+
+export const Share = { share: async (o) => { window.__textShared = o; return { action: 'sharedAction' }; } };
+
+export const Dimensions = { get: () => ({ width: innerWidth, height: innerHeight, scale: 2, fontScale: 1 }) };
+const kbListeners = { keyboardDidShow: new Set(), keyboardDidHide: new Set() };
+export const Keyboard = {
+  addListener: (name, fn) => { (kbListeners[name] || (kbListeners[name] = new Set())).add(fn); return { remove: () => kbListeners[name].delete(fn) }; },
+  dismiss() {},
+};
+window.__showKeyboard = (h) => kbListeners.keyboardDidShow.forEach((fn) => fn({ endCoordinates: { height: h, screenY: innerHeight - h } }));
+window.__hideKeyboard = () => kbListeners.keyboardDidHide.forEach((fn) => fn({}));

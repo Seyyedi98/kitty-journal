@@ -1,5 +1,6 @@
+import { Dialog } from '../platform/dialog';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { RotateCcw, Trash2 } from 'lucide-react-native';
 import { ScrollView, Text } from '../ui';
 import EmptyState from '../components/EmptyState';
@@ -36,7 +37,7 @@ export default function TrashScreen({ db, t, c, rtl, language, calendar, onBack,
       await load();
       onChanged?.();
     } catch {
-      Alert.alert(t.somethingWrong, t.saveFailedHint);
+      Dialog.alert(t.somethingWrong, t.saveFailedHint);
     } finally {
       setBusy(false);
     }
@@ -44,12 +45,12 @@ export default function TrashScreen({ db, t, c, rtl, language, calendar, onBack,
 
   const restore = (entry) => run(() => restoreEntry(db, entry.id));
   const purge = (entry) =>
-    Alert.alert(t.deleteForever, t.deleteForeverConfirm, [
+    Dialog.alert(t.deleteForever, t.deleteForeverConfirm, [
       { text: t.cancel, style: 'cancel' },
       { text: t.deleteForever, style: 'destructive', onPress: () => run(() => purgeEntryAndFiles(db, fs, entry.id)) },
     ]);
   const emptyAll = () =>
-    Alert.alert(t.emptyTrash, t.emptyTrashConfirm, [
+    Dialog.alert(t.emptyTrash, t.emptyTrashConfirm, [
       { text: t.cancel, style: 'cancel' },
       { text: t.emptyTrash, style: 'destructive', onPress: () => run(() => emptyTrashAndFiles(db, fs)) },
     ]);

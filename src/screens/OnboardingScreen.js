@@ -1,24 +1,27 @@
 import React, { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
-import { BookOpen, Bell, Lock, Palette } from 'lucide-react-native';
+import { BookOpen, Bell, Cloud, Heart, Lock, Sparkles } from 'lucide-react-native';
 import { ScrollView, Text } from '../ui';
 import { Button, Note, Segmented } from '../components/common';
-import ThemePicker from '../components/ThemePicker';
+import TimeStepper from '../components/TimeStepper';
+import { normalizeReminder } from '../services/reminders';
 import { saveSetting } from '../db/repository';
 import { DEFAULT_REMINDER } from '../services/reminders';
 import { applyReminders, requestPermission } from '../platform/notifications';
 import { reminderText } from '../services/reminderSync';
 
-const PAGES = 4;
+const PAGES = 6;
 
 /** First-run welcome: language, privacy, look, optional reminder. Everything is skippable. */
 export default function OnboardingScreen({
-  db, t, c, rtl, insets, language, changeLanguage, calendarType, changeCalendar, appearance, setAppearance, theme, setTheme, dark, onFinish,
+  db, t, c, rtl, insets, language, changeLanguage, calendarType, changeCalendar, lock, onLogin, onFinish,
   runExternal = (fn) => fn(),
 }) {
   const [page, setPage] = useState(0);
   const [reminderMsg, setReminderMsg] = useState('');
   const [reminderOn, setReminderOn] = useState(false);
+  const [rem, setRem] = useState(DEFAULT_REMINDER);
+  const locale = ({ fa: 'fa-IR', tr: 'tr-TR' })[language] || 'en-US';
   const align = rtl ? 'right' : 'left';
   const last = page === PAGES - 1;
 
@@ -30,7 +33,7 @@ export default function OnboardingScreen({
         setReminderMsg(t.reminderPermissionNeeded);
         return;
       }
-      const next = { ...DEFAULT_REMINDER, enabled: true };
+      const next = { ...rem, enabled: true };
       await saveSetting(db, 'reminder', next);
       await applyReminders(next, reminderText(t));
       setReminderOn(true);
@@ -40,28 +43,35 @@ export default function OnboardingScreen({
     }
   };
 
-  const icons = [BookOpen, Lock, Palette, Bell];
+  const changeTime = async (time) => {
+    const next = normalizeReminder({ ...rem, hour: time.hour, minute: time.minute });
+    setRem(next);
+    if (!reminderOn) return;
+    try {
+      await saveSetting(db, 'reminder', { ...next, enabled: true });
+      await applyReminders({ ...next, enabled: true }, reminderText(t));
+    } catch {
+      setReminderMsg(t.reminderFailed);
+    }
+  };
+
+  // 0 welcome · 1 companion · 2 passcode · 3 log in (later) · 4 reminders · 5 done
+  const icons = [BookOpen, Heart, Lock, Cloud, Bell, Sparkles];
   const Icon = icons[page];
-  const titles = [t.welcomeTitle, t.onbPrivacyTitle, t.onbCustomizeTitle, t.onbReminderTitle];
-  const bodies = [t.welcomeBody, t.onbPrivacyBody, t.onbCustomizeBody, t.onbReminderBody];
+  const titles = [t.welcomeTitle, t.onbCompanionTitle, t.onbPrivacyTitle, t.onbCloudTitle, t.onbReminderTitle, t.onbDoneTitle];
+  const bodies = [t.welcomeBody, t.onbCompanionBody, t.onbPrivacyBody, t.onbCloudBody, t.onbReminderBody, t.onbDoneBody];
+  // On the action pages the main button reads "Skip" until the action has been done.
+  const actionDone = [true, true, true, false, reminderOn, true][page];
+  const mainLabel = last ? t.getStarted : actionDone ? t.next : t.skip;
 
   return (
     <View style={[s.root, { backgroundColor: c.bg, paddingTop: insets.top + 16, paddingBottom: insets.bottom + 16 }]}>
-      <View style={[s.topRow, rtl && s.rowReverse]}>
-        <View style={{ flex: 1 }} />
-        {!last ? (
-          <Pressable onPress={onFinish} accessibilityRole="button" accessibilityLabel={t.skip} hitSlop={10}>
-            <Text style={{ color: c.muted, fontSize: 13, fontWeight: '600' }}>{t.skip}</Text>
-          </Pressable>
-        ) : null}
-      </View>
-
       <ScrollView contentContainerStyle={s.body}>
         <View style={[s.icon, { backgroundColor: c.sage }]}>
           <Icon size={30} color={c.sageDark} />
         </View>
-        <Text style={{ color: c.ink, fontSize: 22, fontWeight: '700', textAlign: 'center' }}>{titles[page]}</Text>
-        <Text style={{ color: c.muted, fontSize: 14, lineHeight: 22, textAlign: 'center' }}>{bodies[page]}</Text>
+        <Text style={{ color: c.ink, fontSize: 24, fontWeight: '700', textAlign: 'center' }}>{titles[page]}</Text>
+        <Text style={{ color: c.muted, fontSize: 15, lineHeight: 23, textAlign: 'center' }}>{bodies[page]}</Text>
 
         {page === 0 ? (
           <View style={s.picker}>
@@ -79,39 +89,15 @@ export default function OnboardingScreen({
           </View>
         ) : null}
 
-        {page === 2 ? (
+        {page === 3 ? (
           <View style={s.picker}>
-            <Text style={{ color: c.ink, fontSize: 12, fontWeight: '700', textAlign: align }}>{t.calendarType}</Text>
-            <Segmented
-              c={c}
-              rtl={rtl}
-              value={calendarType}
-              onChange={changeCalendar}
-              options={[
-                { value: 'solarHijri', label: t.solarHijri },
-                { value: 'gregorian', label: t.gregorian },
-                { value: 'default', label: t.languageDefault },
-              ]}
-            />
-            <Text style={{ color: c.ink, fontSize: 12, fontWeight: '700', textAlign: align, marginTop: 6 }}>{t.appearance}</Text>
-            <Segmented
-              c={c}
-              rtl={rtl}
-              value={appearance}
-              onChange={setAppearance}
-              options={[
-                { value: 'light', label: t.light },
-                { value: 'dark', label: t.dark },
-                { value: 'system', label: t.system },
-              ]}
-            />
-            <Text style={{ color: c.ink, fontSize: 12, fontWeight: '700', textAlign: align, marginTop: 6 }}>{t.theme}</Text>
-            <ThemePicker t={t} c={c} rtl={rtl} value={theme} onChange={setTheme} dark={dark} />
+            <Button label={t.onbLogin} onPress={() => onLogin && onLogin()} c={c} rtl={rtl} variant="primary" />
           </View>
         ) : null}
 
-        {page === 3 ? (
-          <View style={s.picker}>
+        {page === 4 ? (
+          <View style={[s.picker, { gap: 26, marginTop: 18 }]}>
+            <TimeStepper value={rem} onChange={changeTime} c={c} rtl={rtl} locale={locale} t={t} />
             <Button
               label={t.reminderEnable}
               onPress={enableReminder}
@@ -134,11 +120,11 @@ export default function OnboardingScreen({
       <View style={[s.nav, rtl && s.rowReverse]}>
         {page > 0 ? <Button label={t.back || t.cancel} onPress={() => setPage(page - 1)} c={c} rtl={rtl} style={{ flex: 1 }} /> : null}
         <Button
-          label={last ? t.getStarted : t.next}
+          label={mainLabel}
           onPress={() => (last ? onFinish() : setPage(page + 1))}
           c={c}
           rtl={rtl}
-          variant="primary"
+          variant={mainLabel === t.skip ? 'secondary' : 'primary'}
           style={{ flex: 1 }}
         />
       </View>

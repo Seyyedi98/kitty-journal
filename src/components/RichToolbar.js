@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { usePremium } from '../premium';
 import { StyleSheet, View } from 'react-native';
 import {
   Bold, Heading1, Heading2, Highlighter, Italic, List, ListOrdered, Palette, PilcrowLeft, PilcrowRight, Redo2, Strikethrough, Type, Underline, Undo2, X,
@@ -67,6 +68,7 @@ const GROUPS = [
  */
 export default function RichToolbar({ t, c, state = {}, onCommand, bottomInset = 0 }) {
   const [panel, setPanel] = useState(null); // null | 'color' | 'highlight' | 'font'
+  const { premium, request } = usePremium();
   const current = state.color || '';
   const hl = (state.highlight || '').toLowerCase();
   const pick = (cmd, arg) => { onCommand(cmd, arg); setPanel(null); };
@@ -169,7 +171,7 @@ export default function RichToolbar({ t, c, state = {}, onCommand, bottomInset =
         <View style={[s.group, { borderLeftColor: c.line, borderLeftWidth: 1 }]}>
           <PressableScale
             testID="fmt-font"
-            onPress={() => toggle('font')}
+            onPress={() => (premium ? toggle('font') : request('fonts'))}
             accessibilityRole="button"
             accessibilityLabel={t.fmtFont}
             accessibilityState={{ expanded: panel === 'font', selected: Boolean(state.font) }}

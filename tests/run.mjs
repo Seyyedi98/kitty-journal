@@ -14,7 +14,10 @@ const { foldText, matchesQuery, countWords, tagKey, cleanTagName } = await load(
 const { runMigrations, LATEST_VERSION } = await load('../src/db/migrations.js');
 const repo = await load('../src/db/repository.js');
 const { gregorianToJalali, jalaliToGregorian, jalaliMonthLength, calendarDateKey, getCalendarParts } = await load('../src/calendar.js');
+const { htmlToBlocks } = await load('../src/utils/richView.js');
+const { buildEntryHtml, TEMPLATES } = await load('../src/utils/entryPdf.js');
 const { buildPalette, THEME_KEYS, contrastRatio } = await load('../src/theme.js');
+const { matchesSearch, topTags } = await load('../src/utils/filters.js');
 const { applyFilters, EMPTY_FILTERS } = await load('../src/utils/filters.js');
 
 function makeDb(raw = new DatabaseSync(':memory:')) {
@@ -278,6 +281,58 @@ await test('themes: every theme/mode keeps readable contrast', () => {
 });
 await test('themes: unknown key falls back to default', () => {
   assert.deepEqual(buildPalette('nope', false), buildPalette('sage', false));
+});
+await test('richView: blocks, lists, marks, colours, quotes', () => {
+  const b = htmlToBlocks('<h1>Hi</h1><p dir="rtl">a <strong>b</strong><em>c</em><br>d</p><ul><li>x</li><li>y</li></ul><ol><li>one</li></ol><blockquote><p>q</p></blockquote><hr><p><span style="color:#ff0000">r</span></p>');
+  assert.equal(b[0].type, 'h1');
+  assert.equal(b[1].dir, 'rtl');
+  assert.ok(b[1].runs.some((r) => r.text === 'b' && r.bold));
+  assert.ok(b[1].runs.some((r) => r.text === 'c' && r.italic));
+  assert.deepEqual(b.filter((x) => x.type === 'li').map((x) => x.marker), ['•', '•', '1.']);
+  assert.equal(b.find((x) => x.runs[0] && x.runs[0].text === 'q').quote, true);
+  assert.ok(b.some((x) => x.type === 'hr'));
+  assert.equal(b[b.length - 1].runs[0].color, '#ff0000');
+});
+await test('richView: plain text and entities', () => {
+  const b = htmlToBlocks('hello &amp; <b>bye</b>');
+  assert.equal(b[0].runs.map((r) => r.text).join(''), 'hello & bye');
+  assert.deepEqual(htmlToBlocks(''), []);
+});
+await test('search: #tag finds entries with that tag; mixes with words; top 5 tags', () => {
+  const e = (title, ...tags) => ({ title, body: '', tags: tags.map((name, i) => ({ id: i, name })) });
+  const a = e('Rome', 'Vacation', 'food'), b = e('Work day', 'work'), d = e('vacation plans');
+  assert.equal(matchesSearch(a, '#vacation'), true);
+  assert.equal(matchesSearch(a, '#VAC'), true);
+  assert.equal(matchesSearch(b, '#vacation'), false);
+  assert.equal(matchesSearch(d, '#vacation'), false, 'a #tag search does not match plain words');
+  assert.equal(matchesSearch(a, '#vacation rome'), true);
+  assert.equal(matchesSearch(a, '#vacation paris'), false);
+  assert.equal(matchesSearch(b, 'work'), true);
+  assert.equal(matchesSearch(b, '#'), true);
+  const tags = Array.from({ length: 8 }, (_, i) => ({ id: i + 1, name: 't' + i, count: i }));
+  const top = topTags(tags);
+  assert.equal(top.length, 5);
+  assert.deepEqual(top.map((x) => x.count), [7, 6, 5, 4, 3]);
+  assert.equal(topTags(tags, 5, 2).length, 6, 'selected tag stays visible');
+});
+await test('pdf: every template renders title, body, tags, photos; escapes and sanitises; rtl', () => {
+  const entry = { title: 'A <b>&</b> B', tags: [{ name: 'x<y' }], location: { name: 'Rome' } };
+  for (const tp of TEMPLATES) {
+    const h = buildEntryHtml({ entry, bodyHtml: '<p>hello</p><script>evil()</script>', template: tp.key, dateText: 'Sat', photos: ['data:image/jpeg;base64,AAA', 'data:image/jpeg;base64,BBB'], moodFace: '🙂', rtl: tp.key === 'modern' });
+    assert.ok(h.includes('tpl-' + tp.key));
+    assert.ok(h.includes('A &lt;b&gt;&amp;&lt;/b&gt; B') && h.includes('#x&lt;y') && h.includes('hello') && h.includes('Rome'));
+    assert.ok(!h.includes('evil()') && !h.includes('<script'));
+    assert.equal((h.match(/<img /g) || []).length, 2);
+    assert.ok(h.includes('class="photos many"'));
+  }
+  assert.ok(buildEntryHtml({ entry, bodyHtml: '', template: 'modern', dateText: 'd', rtl: true }).includes('direction: rtl'));
+  assert.ok(buildEntryHtml({ entry, bodyHtml: '', template: 'nope', dateText: 'd' }).includes('tpl-classic'));
+});
+await test('pdf: photos are sized on their wrapper (full width alone, two per row otherwise)', () => {
+  const html = buildEntryHtml({ entry: { title: 'x', tags: [] }, bodyHtml: '<p>a</p>', template: 'garden', dateText: 'd', photos: ['data:a', 'data:b', 'data:c'] });
+  assert.ok(html.includes('.photos.many .ph { width: calc(50% - 5px); }'));
+  assert.ok(!/\.photos\.many img \{ width: calc/.test(html), 'img must not be given a fraction of its shrink-wrapped parent');
+  assert.equal((html.match(/class="ph"/g) || []).length, 3);
 });
 console.log(`\n${passed} passed, ${failures.length} failed`);
 if (failures.length) { console.log('Failed:', failures.join('; ')); process.exit(1); }

@@ -2,7 +2,8 @@ import React, { useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { BookOpen, Star } from 'lucide-react-native';
 import { ScrollView, Text } from '../ui';
-import { Card, Note, Segmented } from '../components/common';
+import { Button, Card, Note, Segmented } from '../components/common';
+import { usePremium } from '../premium';
 import { MOODS } from '../theme';
 import { EMOTIONS } from '../utils/emotions';
 import { RANGE_PRESETS, computeInsights, rangeFor } from '../utils/insights';
@@ -49,7 +50,8 @@ function Rows({ rows, c, rtl, color }) {
   ));
 }
 
-export default function InsightsScreen({ t, c, rtl, language, calendar, today, entries, dailyMoods }) {
+export default function InsightsScreen({ t, c, rtl, language, calendar, today, entries, dailyMoods, premium = true }) {
+  const { openPremium } = usePremium();
   const [preset, setPreset] = useState('30d');
   const localeTag = language === 'fa' ? 'fa-IR' : language === 'tr' ? 'tr-TR' : 'en-US';
   const num = useMemo(() => {
@@ -72,7 +74,9 @@ export default function InsightsScreen({ t, c, rtl, language, calendar, today, e
     return out;
   }, [entries, dailyMoods]);
 
-  const range = useMemo(() => rangeFor(preset, today), [preset, today]);
+  // Free: always the last 30 days, simple numbers and the mood summary.
+  const shownPreset = premium ? preset : '30d';
+  const range = useMemo(() => rangeFor(shownPreset, today), [shownPreset, today]);
   const data = useMemo(
     () => computeInsights({ entries, dailyMoods: dayMoods, range, today, calendar, weekStart: WEEK_START[language] ?? 0 }),
     [entries, dayMoods, range, today, calendar, language],
@@ -107,13 +111,13 @@ export default function InsightsScreen({ t, c, rtl, language, calendar, today, e
       <Text style={[s.eyebrow, { color: c.muted, textAlign: align }]}>{t.insights}</Text>
       <Text style={[s.title, { color: c.ink, textAlign: align }]}>{t.insights}</Text>
 
-      <Segmented
+      {premium ? <Segmented
         c={c}
         rtl={rtl}
         value={preset}
         onChange={setPreset}
         options={RANGE_PRESETS.map((p) => ({ value: p, label: t[p === 'all' ? 'rangeAll' : `range${p}`] }))}
-      />
+      /> : <Text style={{ color: c.muted, fontSize: 12, textAlign: align }}>{t.insightsFreeNote}</Text>}
 
       {totals.entries === 0 && entries.length === 0 ? <Note c={c} rtl={rtl}>{t.insightsEmpty}</Note> : null}
 
@@ -138,10 +142,13 @@ export default function InsightsScreen({ t, c, rtl, language, calendar, today, e
         </View>
       </View>
 
+      {premium ? (
       <Card title={t.monthlyActivity} c={c} rtl={rtl}>
         <Bars items={data.monthly.map((m) => ({ label: monthName(m), value: m.count }))} max={monthMax} c={c} rtl={rtl} color={c.accent} format={num} />
       </Card>
+      ) : null}
 
+      {premium ? (
       <Card title={t.activeWeekdays} c={c} rtl={rtl}>
         {totals.entries === 0 ? (
           <Text style={{ color: c.muted, fontSize: 12, textAlign: align }}>{t.noData}</Text>
@@ -149,6 +156,7 @@ export default function InsightsScreen({ t, c, rtl, language, calendar, today, e
           <Bars items={data.weekdays.map((w) => ({ label: weekdayName(w.day), value: w.count }))} max={weekMax} c={c} rtl={rtl} color={c.accent} format={num} />
         )}
       </Card>
+      ) : null}
 
       <Card title={t.moodDistribution} c={c} rtl={rtl}>
         {data.mood.recordedDays === 0 ? (
@@ -163,7 +171,7 @@ export default function InsightsScreen({ t, c, rtl, language, calendar, today, e
         )}
       </Card>
 
-      {weeklyHasData ? (
+      {premium && weeklyHasData ? (
         <Card title={t.weeklyMood} c={c} rtl={rtl}>
           <Bars
             items={data.weeklyMood.map((w, i) => ({ label: i === 0 || i === data.weeklyMood.length - 1 ? formatDateKey(w.start, language, calendar, { month: 'short', day: 'numeric' }) : '', value: w.avg }))}
@@ -177,13 +185,13 @@ export default function InsightsScreen({ t, c, rtl, language, calendar, today, e
         </Card>
       ) : null}
 
-      {data.topTags.length ? (
+      {premium && data.topTags.length ? (
         <Card title={t.topTags} c={c} rtl={rtl}>
           <Rows rows={data.topTags.map((x) => ({ key: x.name, label: `#${x.name}`, count: x.count, countText: fmt(t.timesCount, { n: num(x.count) }) }))} c={c} rtl={rtl} color={c.accent} />
         </Card>
       ) : null}
 
-      {data.topEmotions.length ? (
+      {premium && data.topEmotions.length ? (
         <Card title={t.topEmotions} c={c} rtl={rtl}>
           <Rows
             rows={data.topEmotions.map((x) => ({
@@ -202,6 +210,13 @@ export default function InsightsScreen({ t, c, rtl, language, calendar, today, e
               {data.topEmotions.filter((x) => x.avgIntensity != null).map((x) => `${t[`emotion_${x.key}`] || x.key}: ${fmt(t.averageStrength, { n: num(x.avgIntensity) })}`).join(' · ')}
             </Text>
           ) : null}
+        </Card>
+      ) : null}
+
+      {!premium ? (
+        <Card title={t.insightsLockedTitle} c={c} rtl={rtl}>
+          <Text style={{ color: c.muted, fontSize: 13, lineHeight: 20, textAlign: align }}>{t.insightsLockedBody}</Text>
+          <Button label={t.premiumSee} onPress={openPremium} c={c} rtl={rtl} variant="primary" />
         </Card>
       ) : null}
 

@@ -1,6 +1,6 @@
+import { Dialog } from '../platform/dialog';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Alert,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -265,7 +265,7 @@ export default function EditorModal({
       await autosave.flush();
     } catch {
       // Write failed: stay open so the text is not lost; the banner offers a retry.
-      Alert.alert(t.saveFailed, t.saveFailedHint);
+      Dialog.alert(t.saveFailed, t.saveFailedHint);
       return;
     }
     // Discard an entry that was created in this session but is now empty.
@@ -358,7 +358,7 @@ export default function EditorModal({
   };
 
   const removePhoto = (photo) => {
-    Alert.alert(t.photoRemove, t.photoRemoveConfirm, [
+    Dialog.alert(t.photoRemove, t.photoRemoveConfirm, [
       { text: t.cancel, style: 'cancel' },
       {
         text: t.photoRemove,
@@ -406,7 +406,7 @@ export default function EditorModal({
       setFavoriteState(next);
       onChanged?.();
     } catch {
-      Alert.alert(t.saveFailed, t.saveFailedHint);
+      Dialog.alert(t.saveFailed, t.saveFailedHint);
     }
   };
 
@@ -419,7 +419,7 @@ export default function EditorModal({
       setPinnedState(next);
       onChanged?.();
     } catch {
-      Alert.alert(t.saveFailed, t.saveFailedHint);
+      Dialog.alert(t.saveFailed, t.saveFailedHint);
     }
   };
 
@@ -429,7 +429,7 @@ export default function EditorModal({
       onClose();
       return;
     }
-    Alert.alert(t.delete, `${t.deleteConfirm}\n${t.deleteConfirmSoft}`, [
+    Dialog.alert(t.delete, `${t.deleteConfirm}\n${t.deleteConfirmSoft}`, [
       { text: t.cancel, style: 'cancel' },
       {
         text: t.delete,
@@ -444,7 +444,7 @@ export default function EditorModal({
             onClose();
           } catch {
             deletedRef.current = false;
-            Alert.alert(t.saveFailed, t.saveFailedHint);
+            Dialog.alert(t.saveFailed, t.saveFailedHint);
           }
         },
       },

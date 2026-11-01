@@ -1,5 +1,6 @@
+import { Dialog } from '../platform/dialog';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, Modal, Pressable, StyleSheet, View } from 'react-native';
+import { Modal, Pressable, StyleSheet, View } from 'react-native';
 import { Pencil, Tag, Trash2 } from 'lucide-react-native';
 import { ScrollView, Text, TextInput } from '../ui';
 import EmptyState from '../components/EmptyState';
@@ -44,11 +45,11 @@ export default function TagsScreen({ db, t, c, rtl, language, onBack, onChanged 
       await load();
       onChanged?.();
     } catch {
-      Alert.alert(t.somethingWrong, t.saveFailedHint);
+      Dialog.alert(t.somethingWrong, t.saveFailedHint);
     }
   };
   const remove = (tag) =>
-    Alert.alert(t.deleteTag, t.deleteTagConfirm, [
+    Dialog.alert(t.deleteTag, t.deleteTagConfirm, [
       { text: t.cancel, style: 'cancel' },
       {
         text: t.deleteTag,
@@ -59,7 +60,7 @@ export default function TagsScreen({ db, t, c, rtl, language, onBack, onChanged 
             await load();
             onChanged?.();
           } catch {
-            Alert.alert(t.somethingWrong, t.saveFailedHint);
+            Dialog.alert(t.somethingWrong, t.saveFailedHint);
           }
         },
       },

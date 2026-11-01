@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { Star, X } from 'lucide-react-native';
 import { ScrollView, Text } from '../ui';
 import { MOODS } from '../theme';
-import { EMPTY_FILTERS, hasActiveFilters } from '../utils/filters';
+import { EMPTY_FILTERS, hasActiveFilters, topTags } from '../utils/filters';
 
 export { EMPTY_FILTERS, hasActiveFilters, applyFilters } from '../utils/filters';
 
@@ -30,7 +30,7 @@ function Chip({ selected, onPress, children, c, label }) {
 export default function FilterBar({ filters, setFilters, tags, t, c, rtl }) {
   const active = hasActiveFilters(filters);
   const toggle = (patch) => setFilters({ ...filters, ...patch });
-  const usedTags = tags.filter((x) => x.count > 0);
+  const usedTags = topTags(tags, 5, filters.tagId);
   const scroller = useRef(null);
   return (
     <View style={s.wrap}>

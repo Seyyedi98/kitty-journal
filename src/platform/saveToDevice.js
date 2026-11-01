@@ -20,7 +20,7 @@ export async function saveFileToDevice(uri, { name, mimeType = 'application/octe
   const perm = await SAF.requestDirectoryPermissionsAsync();
   if (!perm.granted) return { saved: false, reason: 'cancelled' };
   const base64 = await FS.readAsStringAsync(uri, { encoding: FS.EncodingType.Base64 });
-  const bare = name.replace(/\.(zip|json)$/i, ''); // the system adds the extension from the MIME type
+  const bare = name.replace(/\.(zip|json|pdf|png)$/i, ''); // the system adds the extension from the MIME type
   const target = await SAF.createFileAsync(perm.directoryUri, bare, mimeType);
   await FS.writeAsStringAsync(target, base64, { encoding: FS.EncodingType.Base64 });
   return { saved: true };

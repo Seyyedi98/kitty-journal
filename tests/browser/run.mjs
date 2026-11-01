@@ -43,14 +43,14 @@ async function step(name, fn) {
   try { await fn(); passed++; console.log('  ok  ', name); }
   catch (e) {
     failures.push(name);
-    console.log('  FAIL', name, '\n      ', String(e.message).split('\n').slice(0, 40).join(' | '));
+    console.log('  FAIL', name, '\n      ', String(e.message).split('\n').slice(0, 40).join(' | '), process.env.KJ_DEBUG ? String(e.stack).split('\n').filter((l) => l.includes('run.mjs')).slice(0, 2).join(' ') : '');
     if (process.env.KJ_DEBUG) {
       console.log('      page errors:', JSON.stringify((await errors().catch(() => [])).slice(0, 3)).slice(0, 600));
       console.log('      page text  :', JSON.stringify((await bodyText().catch(() => '')).slice(0, 400)));
     }
   }
 }
-page.on('console', (m) => { if (process.env.KJ_DEBUG && m.text().includes('backup failed')) console.log('      CONSOLE', m.text().slice(0, 500)); });
+page.on('console', (m) => { if (process.env.KJ_DEBUG && (m.text().includes('backup failed') || m.text().includes('share failed') || m.text().startsWith('DEL-'))) console.log('      CONSOLE', m.text().slice(0, 500)); });
 
 const editorFrame = async () => {
   await page.waitForSelector('[data-testid="editor-frame"]');
@@ -64,6 +64,8 @@ async function typeBody(txt) {
   await fr.click('#ed');
   await page.keyboard.type(txt);
 }
+const editFromPreview = async () => { await page.locator('[data-testid="entry-preview"] [role="button"][aria-label="Edit"]').click(); await wait(200); };
+const closePreview = async () => { const pv = page.locator('[data-testid="entry-preview"]'); await wait(150); if (await pv.count()) { await pv.locator('[role="button"][aria-label="Back"]').click(); await wait(150); } };
 const bodyHtmlInEditor = async () => (await editorFrame()).evaluate(() => document.getElementById('ed').innerHTML);
 const wait = (ms) => page.waitForTimeout(ms);
 const text = (t, opts = {}) => page.getByText(t, { exact: true, ...opts });
@@ -100,28 +102,43 @@ const FAKE_LEAFLET = `(function(){
 })();`;
 
 console.log('boot');
-await step('Onboarding (C2): first run shows the intro; language switches it; pickers work; reminder is optional; finishing is remembered', async () => {
-  const btn = (name) => page.locator(`[role="button"][aria-label="${name}"]`).first();
-  const nextBtn = () => page.locator('[role="button"]').filter({ hasText: /^Next$/ }).first();
-  await waitForText('Welcome to your quiet corner');
+await step('Onboarding: welcome, companion, passcode, log in, reminders, done; language switches; every page can be skipped through; finishing is remembered', async () => {
+  const mainBtn = (label) => page.locator('[role="button"]').filter({ hasText: new RegExp(`^${label}$`) }).last();
+  await waitForText('Welcome to Kitty Journal');
+  await waitForText('Press Next to get started');
   // language: Persian re-renders the intro in Persian, English brings it back
   await text('فارسی', { exact: true }).first().click();
-  await waitForText('به گوشهٔ آرام خودت خوش آمدی');
+  await waitForText('به کیتی ژورنال خوش آمدی');
   await text('English', { exact: true }).first().click();
-  await waitForText('Welcome to your quiet corner');
-  await nextBtn().click();
-  await waitForText('Private by default');
-  await nextBtn().click();
-  await waitForText('Make it yours');
-  await text('Dark', { exact: true }).first().click();
-  await text('Light', { exact: true }).first().click();
-  await nextBtn().click();
-  await waitForText('Gentle reminders?');
+  await waitForText('Welcome to Kitty Journal');
+  await mainBtn('Next').click();
+  await waitForText('Your life companion');
+  await waitForText('confide in privately');
+  await mainBtn('Next').click();
+  // privacy page is only an introduction: no lock button here
+  await waitForText('Safe and private');
+  await waitForText('Add a passcode to keep your diary private');
+  assert.equal(await page.locator('[role="button"]').filter({ hasText: /Add passcode/ }).count(), 0, 'no passcode button in the intro');
+  await mainBtn('Next').click();
+  // log in page: only a button for now
+  await waitForText('Keep your memories forever');
+  assert.equal(await page.locator('[role="button"]').filter({ hasText: /^Log in$/ }).count(), 1, 'login button');
+  await mainBtn('Skip').click();
+  await waitForText('Get notified');
   // permission denied: explained, nothing scheduled, can still continue
   await page.evaluate(() => { window.__notifPerm = 'denied'; });
   await text('Remind me to write', { exact: true }).first().click();
   await waitForText('Notifications are turned off for Kitty Journal');
   assert.equal(await page.evaluate(() => window.__scheduled.length), 0);
+  // the time can be chosen here; with permission granted the reminder uses it
+  await page.evaluate(() => { window.__notifPerm = 'granted'; });
+  await page.locator('[role="button"][aria-label="Hour +"]').first().click();
+  await page.locator('[role="button"][aria-label="Minute +"]').first().click();
+  await text('Remind me to write', { exact: true }).first().click();
+  await waitFor(() => { const r = one("SELECT value FROM app_settings WHERE key='reminder'"); return r && JSON.parse(r.value).hour === 21 && JSON.parse(r.value).minute === 5; });
+  await mainBtn('Next').click();
+  await waitForText('Congratulations!');
+  await waitForText('You can start using the app');
   await text('Start writing', { exact: true }).first().click();
   await waitForText('Recent entries');
   assert.equal(JSON.parse(one("SELECT value FROM app_settings WHERE key='onboardingDone'").value), true);
@@ -136,6 +153,47 @@ await step('app boots, migrations run, home renders without errors', async () =>
 });
 
 console.log('entry: text, tag, feelings, place, photo');
+await step('Plan: free users get the simple app (locks and teasers); switching to Premium in Settings unlocks everything', async () => {
+  const later = () => page.locator('[data-testid="premium-later"]').click();
+  assert.equal(await page.evaluate(() => 1), 1);
+  await label('tab-settings').click();
+  await waitForText('Your plan');
+  assert.equal(await page.locator('[data-testid="premium-prompt"]').count(), 0);
+  // app lock is Premium
+  await page.setViewportSize({ width: 412, height: 1700 }); await wait(400);
+  await text('App lock', { exact: true }).first().click();
+  await page.locator('[data-testid="premium-prompt"]').waitFor();
+  await waitForText('Locking the app with a PIN or fingerprint is part of Premium');
+  await later();
+  await page.setViewportSize({ width: 412, height: 860 }); await wait(300);
+  // only the Sage theme is free
+  await text('Appearance', { exact: true }).first().click();
+  await page.locator('[data-testid="theme-rose"]').click();
+  await waitForText('All colour themes are part of Premium');
+  await later();
+  assert.equal(one("SELECT value FROM app_settings WHERE key='theme'"), null, 'a locked theme is not saved');
+  await page.evaluate(() => window.__pressBack()); await wait(250);
+  // Memories is Premium
+  await label('tab-memories').click();
+  await page.locator('[data-testid="premium-locked"]').waitFor();
+  // Insights is the simple version
+  await label('tab-insights').click();
+  await waitForText('Showing the last 30 days');
+  assert.equal(await text('Entries by month', { exact: true }).count(), 0, 'no monthly chart for free');
+  assert.ok((await bodyText()).includes('Full insights'), 'teaser for the rest');
+  await waitForText('Mood distribution');
+  // switch to Premium (testing switch)
+  await label('tab-settings').click();
+  await text('Premium', { exact: true }).first().click();
+  await waitFor(() => (one("SELECT value FROM app_settings WHERE key='premium'") || {}).value === 'true');
+  await label('tab-memories').click();
+  await waitFor(async () => (await page.locator('[data-testid="premium-locked"]').count()) === 0);
+  await label('tab-insights').click();
+  await text('Entries by month', { exact: true }).waitFor();
+  assert.deepEqual(await errors(), []);
+  await label('tab-home').click();
+  await waitForText('Recent entries');
+});
 await step('new entry autosaves text and shows "Saved" only after commit', async () => {
   await label('New entry').click();
   await page.getByPlaceholder('A title for today (optional)').fill('Istanbul day');
@@ -232,9 +290,9 @@ await step('Memories: photo grid + places list + open in maps', async () => {
 });
 await step('opening an entry from Memories opens the editor with its data', async () => {
   await text('View entry').click();
-  await waitForText('Edit');
+  await editFromPreview();
   assert.equal(await page.getByPlaceholder('A title for today (optional)').inputValue(), 'Istanbul day');
-  await text('Done').click();
+  await text('Done').click(); await closePreview();
 });
 
 await step('Memories map: photo marker, tap opens the entries of that place', async () => {
@@ -253,9 +311,9 @@ await step('Memories map: photo marker, tap opens the entries of that place', as
   await waitForText('1 entries here');
   assert.ok((await bodyText()).includes('Istanbul day'));
   await text('Istanbul day').last().click();
-  await waitForText('Edit');
+  await editFromPreview();
   assert.equal(await page.getByPlaceholder('A title for today (optional)').inputValue(), 'Istanbul day');
-  await text('Done').click();
+  await text('Done').click(); await closePreview();
 });
 
 await step('naming places: Memories list, map panel and entry editor; no add button on Memories', async () => {
@@ -272,7 +330,7 @@ await step('naming places: Memories list, map panel and entry editor; no add but
   await text('Save name').click();
   await waitFor(() => one("SELECT name FROM locations WHERE entry_id=" + eid).name === 'Bosphorus bridge');
   await waitForText('Place name saved');
-  assert.ok((await bodyText()).includes('Bosphorus bridge'));
+  await waitForText('Bosphorus bridge');
   // map panel: rename the group again
   await text('Map').click();
   const frame = page.frameLocator('[data-testid="map-frame"]');
@@ -407,8 +465,10 @@ await step('Restore (B2b): JSON merge adds missing entry, keeps existing; replac
   // replace asks for confirmation and does nothing until confirmed
   await text('Replace my journal', { exact: true }).last().click();
   await wait(200);
-  assert.ok(await page.evaluate(() => window.__alerts[window.__alerts.length - 1].message.includes('Replace everything')), 'confirm shown');
+  await waitForText('Replace everything on this device');
   assert.equal(one("SELECT COUNT(*) AS n FROM entries WHERE uuid='b2b0000000000000000000000000000a'").n, 0);
+  await page.locator('[data-testid="dialog-cancel"]').click(); await wait(200); // popup, not a native alert
+  assert.equal(await page.locator('[data-testid="dialog-cancel"]').count(), 0, 'popup closed');
 
   // merge
   await text('Add to my journal', { exact: true }).last().click();
@@ -434,15 +494,123 @@ await step('Restore (B2b): JSON merge adds missing entry, keeps existing; replac
 });
 
 console.log('delete, undo, trash, purge');
+await step('keyboard: pages get room below the content while it is open, so a short page can scroll the field clear of it', async () => {
+  await label('tab-home').click();
+  const pad = () => page.evaluate(() => {
+    const f = [...document.querySelectorAll('input')].find((i) => (i.placeholder || '').startsWith('Search'));
+    let n = f; // the scroll content wrapper is the nearest ancestor with a bottom padding
+    while (n && !(parseFloat(getComputedStyle(n).paddingBottom) > 100)) n = n.parentElement;
+    return n ? parseFloat(getComputedStyle(n).paddingBottom) : 0;
+  });
+  const before = await pad();
+  await page.evaluate(() => window.__showKeyboard(320));
+  await waitFor(async () => (await pad()) >= before + 320);
+  await page.evaluate(() => window.__hideKeyboard());
+  await waitFor(async () => (await pad()) === before);
+  assert.deepEqual(await errors(), []);
+});
+await step('Preview: tapping an entry opens a read-only page with Back/Edit/Share, photos and text; Edit goes to the editor and back', async () => {
+  await label('tab-home').click();
+  await text('Istanbul day').first().click();
+  const pv = page.locator('[data-testid="entry-preview"]');
+  await pv.waitFor();
+  assert.equal(await page.locator('[data-testid="editor-frame"]').count(), 0, 'not the editor');
+  const t = await pv.innerText();
+  assert.ok(t.includes('Istanbul day') && t.includes('Walked by the water'), t);
+  for (const l of ['Back', 'Edit', 'Share']) assert.equal(await pv.locator(`[role="button"][aria-label="${l}"]`).count(), 1, l);
+  assert.equal(await pv.locator('[role="button"][aria-label="Delete"]').count(), 0, 'no delete on the preview');
+  await waitFor(async () => (await pv.locator('img').count()) >= 1);
+  // Share opens a chooser: text / picture / styled PDF
+  await pv.locator('[role="button"][aria-label="Share"]').click();
+  await page.locator('[data-testid="share-sheet"]').waitFor();
+  for (const id of ['share-text', 'share-image', 'share-pdf']) assert.equal(await page.locator(`[data-testid="${id}"]`).count(), 1, id);
+  await page.locator('[data-testid="share-text"]').click();
+  await waitFor(async () => ((await page.evaluate(() => window.__textShared)) || {}).message?.includes('Istanbul day'));
+  assert.equal(await page.locator('[data-testid="share-sheet"]').count(), 0, 'sheet closes');
+  // picture of the page
+  await pv.locator('[role="button"][aria-label="Share"]').click();
+  await page.locator('[data-testid="share-image"]').click();
+  await page.locator('[data-testid="image-share"]').click();
+  await waitFor(async () => (await page.evaluate(() => window.__shots.length)) === 1);
+  await waitFor(async () => (await page.evaluate(() => window.__shared.some((x) => x.options.mimeType === 'image/png'))));
+  // styled PDF with a chosen template
+  await pv.locator('[role="button"][aria-label="Share"]').click();
+  await page.locator('[data-testid="share-pdf"]').click();
+  await page.locator('[data-testid="tpl-midnight"]').click();
+  await page.locator('[data-testid="pdf-share"]').click();
+  await waitFor(async () => (await page.evaluate(() => window.__printed.length)) === 1);
+  const printed = await page.evaluate(() => window.__printed[0].html);
+  assert.ok(printed.includes('tpl-midnight') && printed.includes('Istanbul day') && printed.includes('Walked by the water'), 'pdf html');
+  assert.ok(printed.includes('data:image/jpeg;base64,'), 'photo embedded');
+  await waitFor(async () => (await page.evaluate(() => window.__shared.some((x) => x.options.mimeType === 'application/pdf'))));
+  await waitFor(async () => (await page.locator('[data-testid="share-sheet"]').count()) === 0);
+  // file names stay ASCII so Android's share provider accepts them
+  const sharedPdf = await page.evaluate(() => window.__shared.filter((x) => x.options.mimeType === 'application/pdf').pop().uri);
+  assert.match(sharedPdf, /^[\x21-\x7e]+$/, sharedPdf);
+  // save a copy to a folder instead of sharing: picture and PDF
+  await pv.locator('[role="button"][aria-label="Share"]').click();
+  await page.locator('[data-testid="share-image"]').click();
+  await page.locator('[data-testid="image-save"]').click();
+  await waitFor(async () => ((await page.evaluate(() => window.__safCreated)) || []).some((u) => u.endsWith('.png')));
+  await waitForText('Saved to the folder you chose.');
+  await page.locator('[data-testid="dialog-ok"]').click();
+  await pv.locator('[role="button"][aria-label="Share"]').click();
+  await page.locator('[data-testid="share-pdf"]').click();
+  await page.locator('[data-testid="pdf-save"]').click();
+  await waitFor(async () => ((await page.evaluate(() => window.__safCreated)) || []).some((u) => u.endsWith('.pdf')));
+  await waitForText('Saved to the folder you chose.');
+  await page.locator('[data-testid="dialog-ok"]').click();
+  // Edit -> editor; Done -> back on the preview
+  await editFromPreview();
+  await page.waitForSelector('[data-testid="editor-frame"]');
+  await text('Done').click();
+  await pv.waitFor();
+  // Back closes
+  await pv.locator('[role="button"][aria-label="Back"]').click();
+  await waitFor(async () => (await page.locator('[data-testid="entry-preview"]').count()) === 0);
+  assert.deepEqual(await errors(), []);
+});
+await step('Plan (free): PDF sharing and editor fonts ask for Premium, text/picture sharing stays free', async () => {
+  const later = () => page.locator('[data-testid="premium-later"]').click();
+  await label('tab-settings').click();
+  await text('Free', { exact: true }).first().click();
+  await waitFor(() => (one("SELECT value FROM app_settings WHERE key='premium'") || {}).value === 'false');
+  await label('tab-home').click();
+  await text('Istanbul day').first().click();
+  const pv = page.locator('[data-testid="entry-preview"]');
+  await pv.waitFor();
+  await pv.locator('[role="button"][aria-label="Share"]').click();
+  await page.locator('[data-testid="share-text"]').waitFor();
+  await page.locator('[data-testid="share-pdf"]').click();
+  await waitForText('Sharing an entry as a beautifully styled PDF is part of Premium');
+  assert.equal(await page.locator('[data-testid="tpl-midnight"]').count(), 0, 'templates stay hidden');
+  await later();
+  await page.locator('[data-testid="share-image"]').click(); // picture sharing is free
+  await page.locator('[data-testid="image-share"]').waitFor();
+  await page.locator('[data-testid="share-sheet"] [aria-label="Close"]').dispatchEvent('click'); // the stub icon has no size
+  // fonts
+  await editFromPreview();
+  await page.waitForSelector('[data-testid="editor-frame"]');
+  await page.locator('[data-testid="fmt-font"]').click();
+  await waitForText('Choosing fonts for your writing is part of Premium');
+  await later();
+  await text('Done').click(); await closePreview();
+  // back to Premium for the rest of the run
+  await label('tab-settings').click();
+  await text('Premium', { exact: true }).first().click();
+  await waitFor(() => (one("SELECT value FROM app_settings WHERE key='premium'") || {}).value === 'true');
+  await label('tab-home').click();
+  await waitForText('Recent entries');
+  assert.deepEqual(await errors(), []);
+});
 await step('delete → Undo restores; Alert is shown for confirmation', async () => {
   await label('tab-home').click();
   await page.locator('[role="button"]').filter({ hasText: 'Istanbul day' }).first().click().catch(() => {});
   await text('Istanbul day').first().click();
-  await waitForText('Edit');
+  await editFromPreview();
   await text('Delete', { exact: true }).last().click();
-  const alert = await page.evaluate(() => window.__alerts[window.__alerts.length - 1]);
-  assert.equal(alert.title, 'Delete');
-  await page.evaluate(() => window.__alerts[window.__alerts.length - 1].buttons.find((b) => b.style === 'destructive').onPress());
+  await waitForText('Delete', 3000);
+  await page.locator('[data-testid="dialog-destructive"]').click(); await wait(600);
   await waitFor(() => one("SELECT deleted_at FROM entries WHERE title='Istanbul day'").deleted_at);
   await waitForText('Entry deleted');
   await text('Undo').click();
@@ -451,9 +619,9 @@ await step('delete → Undo restores; Alert is shown for confirmation', async ()
 await step('Trash screen lists a deleted entry; restore works; purge removes files', async () => {
   // delete again via the editor
   await text('Istanbul day').first().click();
-  await waitForText('Edit');
+  await editFromPreview();
   await text('Delete', { exact: true }).last().click();
-  await page.evaluate(() => window.__alerts[window.__alerts.length - 1].buttons.find((b) => b.style === 'destructive').onPress());
+  await page.locator('[data-testid="dialog-destructive"]').click(); await wait(150);
   await waitFor(() => one("SELECT deleted_at FROM entries WHERE title='Istanbul day'").deleted_at);
   await label('tab-settings').click();
   await waitForText('1 in trash');
@@ -465,7 +633,7 @@ await step('Trash screen lists a deleted entry; restore works; purge removes fil
   const att = one('SELECT * FROM attachments');
 
   await text('Delete forever').click();
-  await page.evaluate(() => window.__alerts[window.__alerts.length - 1].buttons.find((b) => b.style === 'destructive').onPress());
+  await page.locator('[data-testid="dialog-destructive"]').click(); await wait(150);
   await waitFor(() => !one('SELECT * FROM entries'));
   assert.equal(q('SELECT * FROM attachments').length, 0);
   assert.equal(q('SELECT * FROM locations').length, 0);
@@ -535,9 +703,10 @@ await step('rich editor: bold/italic/heading/list, mixed RTL+LTR paragraphs, sav
   // reopen: formatting is restored
   await waitForText('rich test');
   await text('rich test').first().click();
+  await editFromPreview();
   const html2 = await bodyHtmlInEditor();
   assert.ok(html2.includes('<strong>bold</strong>') && html2.includes('<h1'), html2);
-  await text('Done').click();
+  await text('Done').click(); await closePreview();
   await wait(300);
   raw.exec("DELETE FROM entries WHERE title='rich test'");
   assert.deepEqual(await errors(), []);
@@ -640,9 +809,10 @@ await step('rich editor: legacy plain-text entry opens as paragraphs and stays p
   await label('tab-home').click();
   await waitForText('legacy');
   await text('legacy').first().click();
+  await editFromPreview();
   const html = await bodyHtmlInEditor();
   assert.ok(html.includes('line one') && html.includes('&lt;two&gt; &amp; three'), html);
-  await text('Done').click();
+  await text('Done').click(); await closePreview();
   await wait(500);
   const row = one("SELECT * FROM entries WHERE title='legacy'");
   assert.equal(row.content_format_version, 1, 'opening without editing does not convert');
@@ -690,7 +860,7 @@ await step('tag manager: rename and merge, delete keeps entries', async () => {
   assert.equal(one('SELECT COUNT(*) AS n FROM entry_tags').n, 2);
   assert.equal(q('SELECT * FROM entries').length, 2);
   await label('Delete tag: work').click();
-  await page.evaluate(() => window.__alerts[window.__alerts.length - 1].buttons.find((b) => b.style === 'destructive').onPress());
+  await page.locator('[data-testid="dialog-destructive"]').click(); await wait(150);
   await waitFor(() => q("SELECT * FROM tags WHERE name_key='work'").length === 0);
   assert.equal(q('SELECT * FROM entries').length, 2);
 });
@@ -712,6 +882,7 @@ await step('Insights mood distribution counts a mood picked in the editor; calen
   await label('tab-home').click();
   await label('tab-insights').click();
   await waitForText('Mood distribution');
+  assert.equal(await page.locator('[aria-label="New entry"]').count(), 0, 'no floating add button on Insights');
   assert.ok((await bodyText()).includes(NO_MOOD), 'precondition: no mood data yet');
   await label('tab-home').click();
   await label('New entry').click();
@@ -766,7 +937,7 @@ await step('Restore (B2b): replace makes a safety backup first and swaps the jou
   await waitForText('Replace my journal');
   await text('Replace my journal', { exact: true }).last().click();
   await wait(200);
-  await page.evaluate(() => window.__alerts[window.__alerts.length - 1].buttons.find((b) => b.style === 'destructive').onPress());
+  await page.locator('[data-testid="dialog-destructive"]').click(); await wait(150);
   await waitFor(async () => (await bodyText()).includes('Safety backup saved'));
   assert.ok((await files()).some((u) => u.includes('kitty-journal-safety') && u.endsWith('.zip')), 'safety backup written');
   assert.equal(one("SELECT COUNT(*) AS n FROM entries WHERE uuid='b2b0000000000000000000000000000b'").n, 0, 'local-only entry replaced');
@@ -795,14 +966,14 @@ await step('Storage (B3): usage shown; unused files cleaned; broken photo record
   await waitForText('1 photos have a missing file');
   await text('Remove broken photo entries', { exact: true }).last().click();
   await wait(200);
-  await page.evaluate(() => window.__alerts[window.__alerts.length - 1].buttons.find((b) => b.style === 'destructive').onPress());
+  await page.locator('[data-testid="dialog-destructive"]').click(); await wait(150);
   await waitForText('All photo files are present');
   assert.equal(one("SELECT COUNT(*) AS n FROM attachments WHERE file_name LIKE 'bbbb%'").n, 0, 'broken record removed');
   // backup copies kept in the app
   assert.ok((await files()).some((u) => u.includes('/backups/')), 'backup files exist before');
   await page.locator('[role="button"]').filter({ hasText: 'Delete backup copies kept in the app' }).first().click();
   await wait(200);
-  await page.evaluate(() => window.__alerts[window.__alerts.length - 1].buttons.find((b) => b.style === 'destructive').onPress());
+  await page.locator('[data-testid="dialog-destructive"]').click(); await wait(150);
   await waitForText('backup files deleted');
   assert.ok(!(await files()).some((u) => u.includes('/backups/')), 'backup files removed');
   assert.deepEqual(await errors(), []);
@@ -814,6 +985,8 @@ await step('Storage (B3): usage shown; unused files cleaned; broken photo record
 
 console.log('B4: reminders');
 await step('Reminders (B4): permission, schedule per weekday, no duplicates on edit, off cancels, tap opens a new entry', async () => {
+  raw.exec("DELETE FROM app_settings WHERE key='reminder'"); // the onboarding step above left one on
+  await page.evaluate(() => window.__scheduled.splice(0));
   await label('tab-settings').click();
   await text('Writing reminder', { exact: true }).first().click();
   await waitForText('Remind me to write');
@@ -838,10 +1011,10 @@ await step('Reminders (B4): permission, schedule per weekday, no duplicates on e
   assert.equal((await one("SELECT value FROM app_settings WHERE key='reminder'")).value.includes('"enabled":true'), true);
 
   // editing re-plans from scratch: still 7, never 14
-  await text('Later', { exact: true }).last().click();
+  await page.locator('[role="button"][aria-label="Minute +"]').first().click();
   await wait(300);
   assert.equal(await scheduled(), 7);
-  assert.equal((await page.evaluate(() => window.__scheduled[0].trigger)).minute, 15);
+  assert.equal((await page.evaluate(() => window.__scheduled[0].trigger)).minute, 5);
   await page.locator('[role="button"][aria-label]').filter({ hasText: /^Sun$/ }).first().click();
   await wait(300);
   assert.equal(await scheduled(), 6);
@@ -942,6 +1115,8 @@ await step('App lock (C1): set PIN, lock on return, wrong/right PIN, biometric, 
 
 await step('colour theme can be chosen and persists', async () => {
   await label('tab-settings').click();
+  assert.equal(await page.locator('[data-testid="theme-rose"]').count(), 0, 'themes are not crammed into Settings');
+  await text('Appearance', { exact: true }).first().click();
   await waitForText('Color theme');
   const before = await page.evaluate(() => getComputedStyle(document.body).backgroundColor + '|' + (document.querySelector('[data-testid="theme-rose"] > div')||{style:{}}).style.backgroundColor);
   await page.locator('[data-testid="theme-rose"]').click();
@@ -951,6 +1126,8 @@ await step('colour theme can be chosen and persists', async () => {
   await page.locator('[data-testid="theme-sage"]').click();
   await waitFor(() => (one("SELECT value FROM app_settings WHERE key='theme'") || {}).value === '"sage"');
   assert.deepEqual(await errors(), []);
+  await page.evaluate(() => window.__pressBack()); await wait(250);
+  await page.evaluate(() => window.__pressBack()); await wait(250);
   await label('tab-home').click();
   await waitForText('Recent entries');
 });

@@ -1,5 +1,7 @@
 import React from 'react';
 import {
+  Dimensions,
+  Keyboard,
   ScrollView as NativeScrollView,
   StyleSheet,
   Text as NativeText,
@@ -83,21 +85,81 @@ export function TextInput(props) {
 // overlays provide 0.
 export const BottomInsetContext = React.createContext(0);
 
+/** How far a scroller must move so a field's bottom edge sits `margin` px above the keyboard (0 if already clear). */
+export function scrollDeltaForKeyboard(fieldBottom, keyboardTop, margin = 16) {
+  const over = fieldBottom + margin - keyboardTop;
+  return over > 0 ? over : 0;
+}
+
+/** Height of the on-screen keyboard (0 when hidden) and where it starts on screen. */
+function useKeyboard() {
+  const [kb, setKb] = React.useState({ height: 0, top: 0 });
+  React.useEffect(() => {
+    const show = Keyboard.addListener('keyboardDidShow', (e) => {
+      const h = (e && e.endCoordinates && e.endCoordinates.height) || 0;
+      const top = (e && e.endCoordinates && e.endCoordinates.screenY) || Dimensions.get('window').height - h;
+      setKb({ height: h, top });
+    });
+    const hide = Keyboard.addListener('keyboardDidHide', () => setKb({ height: 0, top: 0 }));
+    return () => { show.remove(); hide.remove(); };
+  }, []);
+  return kb;
+}
+
 export const ScrollView = React.forwardRef(function ScrollView(props, ref) {
   const inset = React.useContext(BottomInsetContext);
+  const kb = useKeyboard();
+  const inner = React.useRef(null);
+  const offset = React.useRef(0);
+  const setRef = (node) => {
+    inner.current = node;
+    if (typeof ref === 'function') ref(node);
+    else if (ref) ref.current = node;
+  };
   let contentContainerStyle = props.contentContainerStyle;
-  // Only vertical page scrollers need dock clearance; horizontal strips (filter chips etc.) must not.
-  if (inset && !props.horizontal) {
+  // Only vertical page scrollers need dock / keyboard clearance; horizontal strips (filter chips etc.) must not.
+  if (!props.horizontal && (inset || kb.height)) {
     const flat = StyleSheet.flatten(contentContainerStyle) || {};
-    contentContainerStyle = { ...flat, paddingBottom: (flat.paddingBottom || 0) + inset };
+    contentContainerStyle = { ...flat, paddingBottom: (flat.paddingBottom || 0) + inset + kb.height };
   }
+
+  // With the keyboard open, a field in this scroller that would end up underneath it is scrolled
+  // into view. (The extra bottom padding above gives short pages room to scroll at all.)
+  React.useEffect(() => {
+    if (props.horizontal || !kb.height) return undefined;
+    const field = TextInput_State();
+    if (!field || !field.measureInWindow || !inner.current || !inner.current.measureInWindow) return undefined;
+    const timer = setTimeout(() => {
+      inner.current.measureInWindow((sx, sy, sw, sh) => {
+        field.measureInWindow((fx, fy, fw, fh) => {
+          if (fy + fh < sy || fy > sy + sh) return; // the focused field belongs to another scroller
+          const delta = scrollDeltaForKeyboard(fy + fh, kb.top);
+          if (delta > 0 && inner.current && inner.current.scrollTo) inner.current.scrollTo({ y: offset.current + delta, animated: true });
+        });
+      });
+    }, 120);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kb.height, kb.top, props.horizontal]);
+
   return (
     <NativeScrollView
-      ref={ref}
+      ref={setRef}
       showsVerticalScrollIndicator={false}
       showsHorizontalScrollIndicator={false}
+      scrollEventThrottle={16}
       {...props}
+      onScroll={(e) => {
+        offset.current = (e && e.nativeEvent && e.nativeEvent.contentOffset && e.nativeEvent.contentOffset.y) || 0;
+        if (props.onScroll) props.onScroll(e);
+      }}
       contentContainerStyle={contentContainerStyle}
     />
   );
 });
+
+function TextInput_State() {
+  const state = NativeTextInput && NativeTextInput.State;
+  return state && state.currentlyFocusedInput ? state.currentlyFocusedInput() : null;
+}
+

@@ -1,18 +1,21 @@
 import React from 'react';
 import { Pressable, View } from 'react-native';
-import { Check } from 'lucide-react-native';
+import { Check, Lock } from 'lucide-react-native';
 import { Text } from '../ui';
-import { THEMES, THEME_KEYS, buildPalette } from '../theme';
+import { THEME_KEYS, buildPalette } from '../theme';
+import { FREE_THEME, usePremium } from '../premium';
 
-const LABEL = { sage: 'themeSage', rose: 'themeRose', lavender: 'themeLavender', ocean: 'themeOcean' };
+const LABEL = { sage: 'themeSage', rose: 'themeRose', lavender: 'themeLavender', ocean: 'themeOcean', cozy: 'themeCozy', navy: 'themeNavy', vanilla: 'themeVanilla', professional: 'themeProfessional', summer: 'themeSummer', forest: 'themeForest', sunset: 'themeSunset' };
 
 /** Four colour-theme swatches. `dark` previews each theme in the current mode. */
 export default function ThemePicker({ t, c, rtl, value, onChange, dark }) {
+  const { premium, request } = usePremium();
   return (
-    <View style={{ flexDirection: rtl ? 'row-reverse' : 'row', gap: 10 }}>
+    <View style={{ flexDirection: rtl ? 'row-reverse' : 'row', flexWrap: 'wrap', rowGap: 14, columnGap: 6 }}>
       {THEME_KEYS.map((key) => {
         const p = buildPalette(key, dark);
-        const selected = key === value;
+        const locked = !premium && key !== FREE_THEME;
+        const selected = premium ? key === value : key === FREE_THEME;
         return (
           <Pressable
             key={key}
@@ -20,8 +23,8 @@ export default function ThemePicker({ t, c, rtl, value, onChange, dark }) {
             accessibilityRole="button"
             accessibilityLabel={t[LABEL[key]]}
             accessibilityState={{ selected }}
-            onPress={() => onChange(key)}
-            style={{ flex: 1, alignItems: 'center', gap: 6 }}
+            onPress={() => (locked ? request('themes') : onChange(key))}
+            style={{ width: '22%', alignItems: 'center', gap: 6 }}
           >
             <View
               style={{
@@ -30,7 +33,7 @@ export default function ThemePicker({ t, c, rtl, value, onChange, dark }) {
                 alignItems: 'center', justifyContent: 'center',
               }}
             >
-              {selected ? <Check size={18} color={p.onAccent} /> : null}
+              {selected ? <Check size={18} color={p.onAccent} /> : locked ? <Lock size={14} color={p.onAccent} /> : null}
             </View>
             <Text style={{ color: c.ink, fontSize: 11, fontWeight: selected ? '700' : '500' }} numberOfLines={1}>
               {t[LABEL[key]]}

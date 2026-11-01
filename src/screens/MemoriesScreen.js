@@ -1,5 +1,6 @@
+import { Dialog } from '../platform/dialog';
 import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, Image, Linking, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { Image, Linking, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { ImageOff, Image as ImageIcon, Map as MapIcon, MapPin, Pencil } from 'lucide-react-native';
 import { ScrollView, Text } from '../ui';
 import { Animated, PressableScale, stagger, zoomIn } from '../motion';
@@ -128,7 +129,7 @@ export default function MemoriesScreen({ db, t, c, rtl, language, calendar, refr
         else await Linking.openURL(webMapUrl(place.latitude, place.longitude));
       });
     } catch {
-      Alert.alert(t.openInMaps, t.mapsUnavailable);
+      Dialog.alert(t.openInMaps, t.mapsUnavailable);
     }
   };
 
@@ -141,7 +142,7 @@ export default function MemoriesScreen({ db, t, c, rtl, language, calendar, refr
       setReload((n) => n + 1);
       onChanged?.();
     } catch {
-      Alert.alert(t.somethingWrong, t.saveFailedHint);
+      Dialog.alert(t.somethingWrong, t.saveFailedHint);
     }
   };
   const startNaming = (ids, name, subtitle) => setNaming({ ids, name: name || '', subtitle: subtitle || '' });

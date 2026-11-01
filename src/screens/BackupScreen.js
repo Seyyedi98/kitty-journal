@@ -1,5 +1,6 @@
+import { Dialog } from '../platform/dialog';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, Modal, StyleSheet, View } from 'react-native';
+import { Modal, StyleSheet, View } from 'react-native';
 import { Archive, Download, FileText, FolderOpen, GitMerge, RefreshCw, Share2 } from 'lucide-react-native';
 import { BottomInsetContext, ScrollView, Text } from '../ui';
 import { Animated, fadeInDown } from '../motion';
@@ -162,7 +163,7 @@ export default function BackupScreen({ db, t, c, rtl, language, calendar, onBack
   }, [busy, parsed, db, t, onChanged]);
 
   const confirmReplace = useCallback(() => {
-    Alert.alert(t.restoreReplace, t.restoreReplaceConfirm, [
+    Dialog.alert(t.restoreReplace, t.restoreReplaceConfirm, [
       { text: t.cancel, style: 'cancel' },
       { text: t.restoreReplace, style: 'destructive', onPress: () => runApply('replace') },
     ]);

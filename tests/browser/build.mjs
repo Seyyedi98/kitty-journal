@@ -19,6 +19,8 @@ const exact = {
   'expo-location': stub('expo-location.js'),
   'react-native-webview': stub('webview.jsx'),
   'expo-sharing': stub('expo-sharing.js'),
+  'expo-print': stub('expo-print.js'),
+  'react-native-view-shot': stub('react-native-view-shot.js'),
   'expo-document-picker': stub('expo-document-picker.js'),
   'expo-notifications': stub('expo-notifications.js'),
   'expo-secure-store': stub('expo-secure-store.js'),

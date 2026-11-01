@@ -1,10 +1,12 @@
 import React from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
-import { Archive, Bell, ChevronLeft, ChevronRight, Heart, HardDrive, Lock, Tag, Trash2 } from 'lucide-react-native';
+import { Archive, Bell, Crown, Palette, ChevronLeft, ChevronRight, Heart, HardDrive, Lock, Tag, Trash2 } from 'lucide-react-native';
 import { ScrollView, Text } from '../ui';
 import { Card, LinkRow, Segmented } from '../components/common';
 import { fmt } from '../i18n';
-import ThemePicker from '../components/ThemePicker';
+import { usePremium } from '../premium';
+
+const THEME_LABELS = { sage: 'themeSage', rose: 'themeRose', lavender: 'themeLavender', ocean: 'themeOcean', cozy: 'themeCozy', navy: 'themeNavy', vanilla: 'themeVanilla', professional: 'themeProfessional', summer: 'themeSummer', forest: 'themeForest', sunset: 'themeSunset' };
 
 /**
  * Settings. `onOpen(name)` navigates to a sub-screen; the rows shown here are
@@ -24,10 +26,13 @@ export default function SettingsScreen({
   setTheme,
   dark,
   onOpen,
+  premium = false,
+  setPremium = () => {},
   trashCount = 0,
   lockEnabled = false,
   num = String,
 }) {
+  const { request } = usePremium();
   const Chevron = rtl ? ChevronLeft : ChevronRight;
   const chevron = <Chevron size={16} color={c.muted} />;
   const align = rtl ? 'right' : 'left';
@@ -36,7 +41,22 @@ export default function SettingsScreen({
       <Text style={[s.eyebrow, { color: c.muted }]}>{t.settings}</Text>
       <Text style={[s.title, { color: c.ink }]}>{t.settings}</Text>
 
-      <Card title={t.language} c={c} rtl={rtl}>
+      <Card title={t.premiumPlan} c={c} rtl={rtl}>
+        <Segmented
+          c={c}
+          rtl={rtl}
+          value={premium ? 'premium' : 'free'}
+          onChange={(v) => setPremium(v === 'premium')}
+          options={[
+            { value: 'free', label: t.planFree },
+            { value: 'premium', label: t.planPremium },
+          ]}
+        />
+        <LinkRow icon={Crown} title={t.premiumIncluded} onPress={() => onOpen('premium')} trailing={chevron} c={c} rtl={rtl} last />
+      </Card>
+
+      <Card title={t.settingsGeneral} c={c} rtl={rtl}>
+        <Text style={[s.label, { color: c.muted, textAlign: align }]}>{t.language}</Text>
         <Segmented
           c={c}
           rtl={rtl}
@@ -48,9 +68,7 @@ export default function SettingsScreen({
             { value: 'tr', label: 'Türkçe' },
           ]}
         />
-      </Card>
-
-      <Card title={t.calendarType} c={c} rtl={rtl}>
+        <Text style={[s.label, { color: c.muted, textAlign: align, marginTop: 6 }]}>{t.calendarType}</Text>
         <Segmented
           c={c}
           rtl={rtl}
@@ -64,28 +82,23 @@ export default function SettingsScreen({
         />
       </Card>
 
-      <Card title={t.appearance} c={c} rtl={rtl}>
-        <Segmented
+      <Card c={c} rtl={rtl} style={{ gap: 0 }}>
+        <LinkRow
+          icon={Palette}
+          title={t.appearance}
+          subtitle={`${t[THEME_LABELS[theme]] || ''} · ${t[appearance === 'system' ? 'system' : appearance === 'dark' ? 'dark' : 'light']}`}
+          onPress={() => onOpen('appearance')}
+          trailing={chevron}
           c={c}
           rtl={rtl}
-          value={appearance}
-          onChange={setAppearance}
-          options={[
-            { value: 'light', label: t.light },
-            { value: 'dark', label: t.dark },
-            { value: 'system', label: t.system },
-          ]}
+          last
         />
-      </Card>
-
-      <Card title={t.theme} c={c} rtl={rtl}>
-        <ThemePicker t={t} c={c} rtl={rtl} value={theme} onChange={setTheme} dark={dark} />
       </Card>
 
       <Card title={t.settingsData} c={c} rtl={rtl} style={{ gap: 0 }}>
         <LinkRow icon={Archive} title={t.backup} onPress={() => onOpen('backup')} trailing={chevron} c={c} rtl={rtl} />
         <LinkRow icon={HardDrive} title={t.storage} onPress={() => onOpen('storage')} trailing={chevron} c={c} rtl={rtl} />
-        <LinkRow icon={Lock} title={t.appLock} subtitle={lockEnabled ? t.lockEnabledMsg : undefined} onPress={() => onOpen('lock')} trailing={chevron} c={c} rtl={rtl} />
+        <LinkRow icon={Lock} title={t.appLock} subtitle={lockEnabled ? t.lockEnabledMsg : premium ? undefined : t.premiumTag} onPress={() => (premium || lockEnabled ? onOpen('lock') : request('lock'))} trailing={chevron} c={c} rtl={rtl} />
         <LinkRow icon={Bell} title={t.reminders} onPress={() => onOpen('reminders')} trailing={chevron} c={c} rtl={rtl} />
         <LinkRow
           icon={Trash2}
@@ -113,6 +126,7 @@ export default function SettingsScreen({
 const s = StyleSheet.create({
   page: { paddingTop: 25, paddingBottom: 120, gap: 2 },
   rowReverse: { flexDirection: 'row-reverse' },
+  label: { fontSize: 12, fontWeight: '700' },
   eyebrow: { fontSize: 10, letterSpacing: 1.6, fontWeight: '700', marginBottom: 9 },
   title: { fontSize: 29, fontWeight: '500', marginTop: -4, marginBottom: 6 },
   privacy: { borderWidth: 1, borderRadius: 15, padding: 16, flexDirection: 'row', alignItems: 'flex-start', gap: 12, marginTop: 14 },

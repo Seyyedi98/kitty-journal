@@ -1,6 +1,7 @@
+import DialogHost from "./src/components/DialogHost";
+import { Dialog } from "./src/platform/dialog";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Alert,
   AppState,
   BackHandler,
   Platform,
@@ -71,6 +72,7 @@ import {
 import Dock from "./src/components/Dock";
 import CatIllustration from "./src/components/CatIllustration";
 import EditorModal from "./src/components/EditorModal";
+import EntryPreview from "./src/components/EntryPreview";
 import FilterBar, {
   EMPTY_FILTERS,
   applyFilters,
@@ -90,13 +92,18 @@ import {
   loadSettings,
   saveSetting,
 } from "./src/db/repository";
-import { matchesQuery } from "./src/utils/text";
+import { matchesSearch } from "./src/utils/filters";
 import EmptyState from "./src/components/EmptyState";
 import MemoriesScreen from "./src/screens/MemoriesScreen";
 import TrashScreen from "./src/screens/TrashScreen";
 import TagsScreen from "./src/screens/TagsScreen";
 import SettingsScreen from "./src/screens/SettingsScreen";
 import BackupScreen from "./src/screens/BackupScreen";
+import AppearanceScreen from "./src/screens/AppearanceScreen";
+import PremiumScreen from "./src/screens/PremiumScreen";
+import PremiumPrompt from "./src/components/PremiumPrompt";
+import PremiumLocked from "./src/components/PremiumLocked";
+import { PremiumContext, effectiveTheme } from "./src/premium";
 import StorageScreen from "./src/screens/StorageScreen";
 import ReminderScreen from "./src/screens/ReminderScreen";
 import LockScreen from "./src/screens/LockScreen";
@@ -167,17 +174,20 @@ function AppShell() {
   const [filters, setFilters] = useState(EMPTY_FILTERS);
   const [editorVisible, setEditorVisible] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [previewId, setPreviewId] = useState(null);
   const [editorDate, setEditorDate] = useState(() => dateKey());
   const [selectedDate, setSelectedDate] = useState(() => dateKey());
   const [calendarMonth, setCalendarMonth] = useState(() =>
     getCalendarParts(dateKey(), "gregorian"),
   );
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [subScreen, setSubScreen] = useState(null); // null | "trash" | "tags" | "backup" | "storage" | "reminders" | "lock"
+  const [subScreen, setSubScreen] = useState(null); // null | "premium" | "appearance" | "trash" | "tags" | "backup" | "storage" | "reminders" | "lock"
   const [trashCount, setTrashCount] = useState(0);
   const [ready, setReady] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [theme, setTheme] = useState(DEFAULT_THEME);
+  const [premium, setPremiumState] = useState(false);
+  const [premiumAsk, setPremiumAsk] = useState(null); // feature key of the open "needs Premium" popup
   const [loadError, setLoadError] = useState(false);
   const [undo, setUndo] = useState(null);
   const undoTimer = useRef(null);
@@ -195,7 +205,7 @@ function AppShell() {
   const dark =
     appearance === "dark" ||
     (appearance === "system" && systemScheme === "dark");
-  const c = useMemo(() => buildPalette(theme, dark), [theme, dark]);
+  const c = useMemo(() => buildPalette(effectiveTheme(theme, premium), dark), [theme, premium, dark]);
   const isTablet = shortestSide >= 600;
   const isLandscapeTablet = isTablet && width > height;
   const contentWidth = Math.min(width - (isTablet ? 88 : 0), 1060);
@@ -241,6 +251,7 @@ function AppShell() {
         setCalendarType(cal);
         setAppearance(look);
         if (THEME_KEYS.includes(saved.theme)) setTheme(saved.theme);
+        setPremiumState(saved.premium === true);
         const effective =
           cal === "default" ? (lang === "fa" ? "solarHijri" : "gregorian") : cal;
         setCalendarMonth(getCalendarParts(dateKey(), effective));
@@ -266,14 +277,7 @@ function AppShell() {
   const visibleEntries = useMemo(() => {
     const filtered = applyFilters(entries, filters);
     if (!search.trim()) return filtered;
-    return filtered.filter((entry) =>
-      matchesQuery(
-        `${entry.title || ""} ${entry.body || ""} ${(entry.tags || [])
-          .map((tag) => tag.name)
-          .join(" ")} ${entry.location?.name || ""} ${entry.location?.address || ""}`,
-        search,
-      ),
-    );
+    return filtered.filter((entry) => matchesSearch(entry, search));
   }, [entries, filters, search]);
   const calendarEntries = useMemo(
     () => entries.filter((entry) => entry.journal_date === selectedDate),
@@ -291,7 +295,7 @@ function AppShell() {
         return next;
       });
     } catch (error) {
-      Alert.alert(t.saveFailed, t.moodSaveFailed);
+      Dialog.alert(t.saveFailed, t.moodSaveFailed);
       console.error(error);
     }
   };
@@ -306,6 +310,13 @@ function AppShell() {
     setEditorDate(entry.journal_date);
     setEditorVisible(true);
   };
+  // Tapping an entry anywhere opens a read-only preview first; Edit goes on to the editor
+  // (and Back from the editor returns to the preview).
+  const openPreview = (entry) => setPreviewId(entry.id);
+  const previewEntry = previewId == null ? null : entries.find((e) => e.id === previewId) || null;
+  useEffect(() => {
+    if (previewId != null && ready && !previewEntry && !editorVisible) setPreviewId(null);
+  }, [previewId, previewEntry, ready, editorVisible]);
   // Reminders: keep the schedule in the app language, and open a new entry when one is tapped.
   const openNewRef = useRef(openNew);
   openNewRef.current = openNew;
@@ -327,7 +338,7 @@ function AppShell() {
       await setFavorite(db, entry.id, !entry.favorite);
       await refresh();
     } catch (error) {
-      Alert.alert(t.saveFailed, t.saveFailedHint);
+      Dialog.alert(t.saveFailed, t.saveFailedHint);
       console.error(error);
     }
   };
@@ -346,7 +357,7 @@ function AppShell() {
       await restoreEntry(db, id);
       await refresh();
     } catch (error) {
-      Alert.alert(t.saveFailed, t.saveFailedHint);
+      Dialog.alert(t.saveFailed, t.saveFailedHint);
       console.error(error);
     }
   };
@@ -381,6 +392,10 @@ function AppShell() {
         : value;
     setCalendarMonth(getCalendarParts(selectedDate, nextCalendar));
   };
+  const setPremium = (value) => {
+    setPremiumState(Boolean(value));
+    persistSetting("premium", Boolean(value));
+  };
   const changeTheme = (value) => {
     if (!THEME_KEYS.includes(value)) return;
     setTheme(value);
@@ -406,14 +421,14 @@ function AppShell() {
   // Open an entry by id (from Memories). The list is already in memory.
   const openEntryById = (id) => {
     const entry = entries.find((e) => e.id === id);
-    if (entry) openEdit(entry);
+    if (entry) openPreview(entry);
   };
 
   // Android hardware/gesture Back: sub-screen -> settings -> Home -> exit.
   // (The editor and photo viewer are Modals and handle Back themselves.)
   useEffect(() => {
     const sub = BackHandler.addEventListener("hardwareBackPress", () => {
-      if (editorVisible) return false;
+      if (editorVisible || previewId != null) return false;
       if (subScreen) {
         setSubScreen(null);
         return true;
@@ -429,7 +444,7 @@ function AppShell() {
       return false;
     });
     return () => sub.remove();
-  }, [editorVisible, subScreen, settingsOpen, tab]);
+  }, [editorVisible, previewId, subScreen, settingsOpen, tab]);
 
   const calendarData = useMemo(() => {
     const monthLength = calendarMonthLength(
@@ -572,6 +587,24 @@ function AppShell() {
         onBack={() => setSubScreen(null)}
       />
     );
+  else if (settingsOpen && subScreen === "premium")
+    content = (
+      <PremiumScreen t={t} c={c} rtl={rtl} premium={premium} setPremium={setPremium} onBack={() => setSubScreen(null)} />
+    );
+  else if (settingsOpen && subScreen === "appearance")
+    content = (
+      <AppearanceScreen
+        t={t}
+        c={c}
+        rtl={rtl}
+        appearance={appearance}
+        setAppearance={changeAppearance}
+        theme={theme}
+        setTheme={changeTheme}
+        dark={dark}
+        onBack={() => setSubScreen(null)}
+      />
+    );
   else if (settingsOpen && subScreen === "reminders")
     content = (
       <ReminderScreen
@@ -612,6 +645,8 @@ function AppShell() {
         setTheme={changeTheme}
         dark={dark}
         onOpen={setSubScreen}
+        premium={premium}
+        setPremium={setPremium}
         trashCount={trashCount}
         lockEnabled={lock.config.enabled}
         num={numberFormatter(language)}
@@ -636,7 +671,7 @@ function AppShell() {
         tags={allTags}
         entries={visibleEntries}
         isSearching={Boolean(search.trim()) || hasActiveFilters(filters)}
-        onEdit={openEdit}
+        onEdit={openPreview}
         onFavorite={toggleFavorite}
         isTablet={isTablet}
       />
@@ -659,9 +694,13 @@ function AppShell() {
         dailyMoods={dailyMoods}
         selectedEntries={calendarEntries}
         onNew={() => openNew(selectedDate)}
-        onEdit={openEdit}
+        onEdit={openPreview}
         onFavorite={toggleFavorite}
       />
+    );
+  else if (tab === "memories" && !premium)
+    content = (
+      <PremiumLocked title={t.memories} body={t.memoriesLockedBody} hint={t.memoriesLockedHint} t={t} c={c} rtl={rtl} />
     );
   else if (tab === "memories")
     content = (
@@ -690,6 +729,7 @@ function AppShell() {
         today={today}
         entries={entries}
         dailyMoods={dailyMoods}
+        premium={premium}
       />
     );
 
@@ -702,6 +742,24 @@ function AppShell() {
   };
 
   // While locked nothing of the journal is rendered (this also closes any open editor/popup).
+  // (hooks must come before the early returns below)
+  const openPremium = () => {
+    setPremiumAsk(null);
+    setEditorVisible(false);
+    setPreviewId(null);
+    setTab("home");
+    setSubScreen("premium");
+    setSettingsOpen(true);
+  };
+  const premiumCtx = useMemo(
+    () => ({ premium, request: setPremiumAsk, openPremium }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [premium],
+  );
+  const promptNode = (
+    <PremiumPrompt feature={premiumAsk} onClose={() => setPremiumAsk(null)} onSee={openPremium} canOpen={!showOnboarding} t={t} c={c} rtl={rtl} />
+  );
+
   if (!lock.ready) return <View style={[styles.safeRoot, { backgroundColor: c.bg }]} />;
   if (lock.locked)
     return (
@@ -713,6 +771,7 @@ function AppShell() {
 
   if (showOnboarding && ready)
     return (
+      <PremiumContext.Provider value={premiumCtx}>
       <View style={[styles.safeRoot, { backgroundColor: c.bg }]}>
         <ExpoStatusBar style={dark ? "light" : "dark"} backgroundColor={c.bg} translucent={false} />
         <OnboardingScreen
@@ -722,6 +781,7 @@ function AppShell() {
           rtl={rtl}
           insets={insets}
           runExternal={lock.runExternal}
+          lock={lock}
           language={language}
           changeLanguage={changeLanguage}
           calendarType={calendarType}
@@ -736,10 +796,13 @@ function AppShell() {
             setShowOnboarding(false);
           }}
         />
+        {promptNode}
       </View>
+      </PremiumContext.Provider>
     );
 
   return (
+    <PremiumContext.Provider value={premiumCtx}>
     <View
       style={[
         styles.safeRoot,
@@ -840,7 +903,7 @@ function AppShell() {
               </Pressable>
             </Animated.View>
           )}
-          {!settingsOpen && ready && !loadError && tab !== "memories" && (
+          {!settingsOpen && ready && !loadError && tab !== "memories" && tab !== "insights" && (
             <PressableScale
               entering={zoomIn(250)}
               scaleTo={0.9}
@@ -856,11 +919,25 @@ function AppShell() {
               ]}
               accessibilityLabel={t.newEntry}
             >
-              <Plus size={23} color="#FFFFFF" />
+              <Plus size={23} color={c.onAccent} />
             </PressableScale>
           )}
         </View>
       </View>
+      <EntryPreview
+        visible={Boolean(previewEntry) && !editorVisible}
+        entry={previewEntry}
+        db={db}
+        onClose={() => setPreviewId(null)}
+        onEdit={openEdit}
+        t={t}
+        c={c}
+        rtl={rtl}
+        language={language}
+        calendar={effectiveCalendar}
+        insets={insets}
+        num={numberFormatter(language)}
+      />
       <EditorModal
         runExternal={lock.runExternal}
         visible={editorVisible}
@@ -878,7 +955,10 @@ function AppShell() {
         dark={dark}
         insets={insets}
       />
+      <DialogHost t={t} c={c} rtl={rtl} />
+      {promptNode}
     </View>
+    </PremiumContext.Provider>
   );
 }
 

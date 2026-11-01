@@ -83,6 +83,97 @@ export const THEMES = {
       muted: '#B8B0C4', dockBorder: '#463F55',
     },
   },
+  // Cozy: warm peach, biscuit cream and terracotta, like a pinned moodboard.
+  cozy: {
+    light: {
+      sage: '#FBDCCB', sageDark: '#8F412C', accent: '#B0543F', accentSoft: '#FDEEE4', write: '#FCEBDD',
+      rose: '#F6CFC0', paper: '#FFF7EE', card: '#FFFCF8', line: '#F1DDCB', bg: '#FBEEDF', cream: '#FFF7EE',
+      muted: '#7A6356', dockBorder: '#F1DDCB',
+    },
+    dark: {
+      sage: '#4D3329', sageDark: '#F4B99E', accent: '#F4B99E', accentSoft: '#3A2A24', write: '#41302A',
+      paper: '#2C2320', card: '#372B27', line: '#52403A', bg: '#231C19', cream: '#2C2320',
+      muted: '#CDB8AB', dockBorder: '#52403A',
+    },
+  },
+  // Navy: deep blues and slate, calm and a little sporty.
+  navy: {
+    light: {
+      sage: '#D9E3F2', sageDark: '#1F3C6B', accent: '#2B4C85', accentSoft: '#EAF0F9', write: '#E9EFF8',
+      paper: '#F6F9FD', card: '#FDFEFF', line: '#D5DEEC', bg: '#EDF2F9', cream: '#F6F9FD',
+      muted: '#5D6B80', dockBorder: '#D5DEEC',
+    },
+    dark: {
+      sage: '#2A3A57', sageDark: '#9DBBEA', accent: '#9DBBEA', accentSoft: '#222D42', write: '#273450',
+      paper: '#1D2433', card: '#252E42', line: '#38455F', bg: '#161C28', cream: '#1D2433',
+      muted: '#A6B3C9', dockBorder: '#38455F',
+    },
+  },
+  // Vanilla: soft butter yellow and warm cream.
+  vanilla: {
+    light: {
+      sage: '#F5E8B8', sageDark: '#6E560F', accent: '#85650F', accentSoft: '#FBF4DA', write: '#FBF1D3',
+      paper: '#FFFBEC', card: '#FFFEF7', line: '#EFE3BC', bg: '#FAF3DC', cream: '#FFFBEC',
+      muted: '#6F6445', dockBorder: '#EFE3BC',
+    },
+    dark: {
+      sage: '#4A4020', sageDark: '#F0DC8A', accent: '#F0DC8A', accentSoft: '#352F1C', write: '#3C3520',
+      paper: '#2A2618', card: '#342F1E', line: '#524A2C', bg: '#201D12', cream: '#2A2618',
+      muted: '#CBBF95', dockBorder: '#524A2C',
+    },
+  },
+  // Professional: quiet slate greys for a clean, work-like journal.
+  professional: {
+    light: {
+      sage: '#DDE3EA', sageDark: '#2F3E4E', accent: '#34495E', accentSoft: '#EEF1F4', write: '#ECEFF2',
+      paper: '#F7F8FA', card: '#FFFFFF', line: '#D9DEE4', bg: '#EEF0F3', cream: '#F7F8FA',
+      muted: '#5C6773', dockBorder: '#D9DEE4',
+    },
+    dark: {
+      sage: '#33404D', sageDark: '#B9C6D3', accent: '#B9C6D3', accentSoft: '#262E37', write: '#2C3641',
+      paper: '#1F252C', card: '#272F38', line: '#3C4753', bg: '#181D22', cream: '#1F252C',
+      muted: '#A5B0BC', dockBorder: '#3C4753',
+    },
+  },
+  // Summer: sunshine yellow, sea teal and a touch of coral.
+  summer: {
+    light: {
+      sage: '#FFE8A3', sageDark: '#0B5F68', accent: '#0E7C86', accentSoft: '#E6F6F5', write: '#FFF0C9',
+      rose: '#FFC6B0', paper: '#FFFCF2', card: '#FFFFFB', line: '#F3E5B8', bg: '#FFF6D9', cream: '#FFFCF2',
+      muted: '#6B6646', dockBorder: '#F3E5B8',
+    },
+    dark: {
+      sage: '#3F3A1C', sageDark: '#7FDCE3', accent: '#7FDCE3', accentSoft: '#1F3436', write: '#38341A',
+      paper: '#232A26', card: '#2C332E', line: '#44503F', bg: '#1A201C', cream: '#232A26',
+      muted: '#B7C2A8', dockBorder: '#44503F',
+    },
+  },
+  // Forest: mossy greens, earthy and grounded.
+  forest: {
+    light: {
+      sage: '#D6E5D3', sageDark: '#2A5A34', accent: '#2F6B3B', accentSoft: '#EAF3E8', write: '#E9F1E5',
+      paper: '#F5FAF3', card: '#FDFFFC', line: '#D3E1CF', bg: '#EBF2E8', cream: '#F5FAF3',
+      muted: '#5C6E5B', dockBorder: '#D3E1CF',
+    },
+    dark: {
+      sage: '#2C4630', sageDark: '#A9DDA6', accent: '#A9DDA6', accentSoft: '#243628', write: '#2A3D2D',
+      paper: '#1E2A20', card: '#263429', line: '#3A5240', bg: '#171F18', cream: '#1E2A20',
+      muted: '#A8BDA8', dockBorder: '#3A5240',
+    },
+  },
+  // Sunset: raspberry pink fading into warm peach.
+  sunset: {
+    light: {
+      sage: '#F9D9DE', sageDark: '#9C2F5C', accent: '#B03A6A', accentSoft: '#FCEBEE', write: '#FBE7E3',
+      paper: '#FFF8F6', card: '#FFFCFB', line: '#F2DAD9', bg: '#FBEDEA', cream: '#FFF8F6',
+      muted: '#755A63', dockBorder: '#F2DAD9',
+    },
+    dark: {
+      sage: '#4E2B3A', sageDark: '#F7B3CC', accent: '#F7B3CC', accentSoft: '#3A2630', write: '#412C37',
+      paper: '#2A1F27', card: '#352933', line: '#523B49', bg: '#20171D', cream: '#2A1F27',
+      muted: '#CDB1BE', dockBorder: '#523B49',
+    },
+  },
   ocean: {
     light: {
       sage: '#D8E8EC', sageDark: '#2F6674', accent: '#33707F', accentSoft: '#EAF3F5', write: '#EBF2F2',

@@ -41,5 +41,6 @@ export async function getFreeDiskStorageAsync() { return window.__freeBytes; }
 window.__safDirs = [];
 export const StorageAccessFramework = {
   async requestDirectoryPermissionsAsync() { return window.__safDeny ? { granted: false } : { granted: true, directoryUri: 'content://downloads/' }; },
-  async createFileAsync(dir, name, mime) { const u = dir + name + (mime === 'application/zip' ? '.zip' : '.json'); files.set(u, ''); return u; },
+  async createFileAsync(dir, name, mime) { const ext = { 'application/zip': '.zip', 'application/pdf': '.pdf', 'image/png': '.png' }[mime] || '.json'; const u = dir + name + ext; window.__safCreated = (window.__safCreated || []).concat(u); files.set(u, ''); return u; },
 };
+export const putFile = (uri, data = '') => { files.set(uri, data); };

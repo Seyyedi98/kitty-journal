@@ -34,6 +34,9 @@ const VERTICAL_TABS = [
   { id: "settings", key: "settings", label: "Settings", Icon: Settings2 },
 ];
 const BROWN = "#8B5A2B";
+// "#RRGGBB" -> same colour fully transparent, so the active pill fades in from the theme colour (not brown).
+const clear = (hex) => (/^#[0-9a-f]{6}$/i.test(hex) ? `rgba(${parseInt(hex.slice(1, 3), 16)},${parseInt(hex.slice(3, 5), 16)},${parseInt(hex.slice(5, 7), 16)},0)` : "rgba(0,0,0,0)");
+const activeColor = (colors) => colors.accent || colors.brown || BROWN;
 const ICON_SIZE = 46;
 const LABEL_MAX_WIDTH = 88;
 const DURATION = 260;
@@ -43,12 +46,11 @@ function AnimatedTab({ tab, active, onPress, colors, compact = false, label, rtl
   useEffect(() => {
     progress.value = withTiming(active ? 1 : 0, { duration: DURATION });
   }, [active, progress]);
+  // Plain strings computed here: functions defined outside a worklet cannot be called on the UI thread.
+  const pillOn = activeColor(colors);
+  const pillOff = clear(pillOn);
   const rowStyle = useAnimatedStyle(() => ({
-    backgroundColor: interpolateColor(
-      progress.value,
-      [0, 1],
-      ["rgba(139,90,43,0)", colors.brown || BROWN],
-    ),
+    backgroundColor: interpolateColor(progress.value, [0, 1], [pillOff, pillOn]),
   }));
   const labelWrapStyle = useAnimatedStyle(() => ({
     width: interpolate(
@@ -99,7 +101,7 @@ function AnimatedTab({ tab, active, onPress, colors, compact = false, label, rtl
         <View style={styles.iconWrap}>
           <Icon
             size={21}
-            color={active ? "#FFFFFF" : colors.muted}
+            color={active ? colors.onAccent || "#FFFFFF" : colors.muted}
             strokeWidth={active ? 2.25 : 1.9}
           />
         </View>
@@ -110,7 +112,7 @@ function AnimatedTab({ tab, active, onPress, colors, compact = false, label, rtl
               style={[
                 styles.label,
                 rtl && styles.labelRtl,
-                { fontFamily: uiFont(active ? 700 : 500) },
+                { fontFamily: uiFont(active ? 700 : 500), color: colors.onAccent || "#FFFFFF" },
                 labelTextStyle,
               ]}
             >
@@ -141,7 +143,7 @@ export default function Dock({
         {
           backgroundColor: colors.cream,
           borderColor: colors.dockBorder,
-          shadowColor: colors.brown || BROWN,
+          shadowColor: activeColor(colors),
         },
         vertical
           ? { top: 14, bottom: 14, ...(rtl ? { left: undefined, right: 14 } : null) }

@@ -3,12 +3,12 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { ScrollView, Text } from '../ui';
 import { Button, Card, Note, SubHeader, ToggleRow } from '../components/common';
 import { loadSettings, saveSetting } from '../db/repository';
-import { DEFAULT_REMINDER, formatTime, normalizeReminder, stepTime } from '../services/reminders';
+import { DEFAULT_REMINDER, normalizeReminder } from '../services/reminders';
 import { applyReminders, requestPermission } from '../platform/notifications';
+import TimeStepper from '../components/TimeStepper';
 import { reminderText } from '../services/reminderSync';
 
 const LOCALES = { en: 'en-US', fa: 'fa-IR', tr: 'tr-TR' };
-const STEP_MINUTES = 15;
 
 /** Writing reminder: on/off, time of day, weekdays. */
 export default function ReminderScreen({ db, t, c, rtl, language, onBack, runExternal = (fn) => fn() }) {
@@ -70,7 +70,6 @@ export default function ReminderScreen({ db, t, c, rtl, language, onBack, runExt
     return commit({ ...reminder, enabled: true });
   };
 
-  const shiftTime = (delta) => commit({ ...reminder, ...stepTime(reminder, delta) }, { announce: reminder.enabled });
 
   const toggleDay = (d) => {
     const has = reminder.days.includes(d);
@@ -90,13 +89,7 @@ export default function ReminderScreen({ db, t, c, rtl, language, onBack, runExt
       </Card>
 
       <Card title={t.reminderTime} c={c} rtl={rtl}>
-        <Text style={{ color: c.ink, fontSize: 26, fontWeight: '700', textAlign: 'center' }} accessibilityLabel={t.reminderTime}>
-          {formatTime(reminder.hour, reminder.minute, locale)}
-        </Text>
-        <View style={[s.row, rtl && s.rowReverse]}>
-          <Button label={t.reminderEarlier} onPress={() => shiftTime(-STEP_MINUTES)} c={c} rtl={rtl} style={{ flex: 1 }} />
-          <Button label={t.reminderLater} onPress={() => shiftTime(STEP_MINUTES)} c={c} rtl={rtl} style={{ flex: 1 }} />
-        </View>
+        <TimeStepper value={reminder} onChange={(time) => commit({ ...reminder, ...time }, { announce: reminder.enabled })} c={c} rtl={rtl} locale={locale} t={t} />
       </Card>
 
       <Card title={t.reminderDays} c={c} rtl={rtl}>
