@@ -5,7 +5,7 @@ import React from 'react';
 export const FREE_THEME = 'sage';
 
 /** Every gated feature; each has a `premium_<key>` sentence in the translations. */
-export const PREMIUM_FEATURES = ['themes', 'fonts', 'pdf', 'lock', 'memories', 'insights'];
+export const PREMIUM_FEATURES = ['themes', 'fonts', 'pdf', 'lock', 'memories', 'insights', 'onthisday', 'cloudbackup'];
 
 /** The theme actually painted: free users always get the default one (their choice is kept for later). */
 export const effectiveTheme = (theme, premium) => (premium ? theme : FREE_THEME);

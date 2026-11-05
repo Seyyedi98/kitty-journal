@@ -1,4 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
+import MoodFace from './MoodFace';
+import { MOOD_IMAGES } from '../moodImages';
 import { Image, Modal, Pressable, Share, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { ChevronLeft, ChevronRight, MapPin, Pencil, Share2 } from 'lucide-react-native';
 import { ScrollView, Text } from '../ui';
@@ -152,7 +154,7 @@ export default function EntryPreview({ visible, entry, db, onClose, onEdit, t, c
         template,
         dateText,
         photos: uris,
-        moodFace: mood ? mood.face : '',
+        moodFace: mood ? MOOD_IMAGES[mood.key] : '',
         rtl,
         footer: 'Kitty Journal',
       });
@@ -244,7 +246,7 @@ export default function EntryPreview({ visible, entry, db, onClose, onEdit, t, c
 
               {mood || place || tags.length ? (
                 <View style={[s.meta, rtl && s.rowReverse]}>
-                  {mood ? <Text style={{ fontSize: 22 }} accessibilityLabel={t[mood.key] || mood.key}>{mood.face}</Text> : null}
+                  {mood ? <MoodFace mood={mood.key} size={30} label={t[mood.key] || mood.key} /> : null}
                   {place ? (
                     <View style={[s.chip, { backgroundColor: c.card, borderColor: c.line }, rtl && s.rowReverse]}>
                       <MapPin size={13} color={c.muted} />

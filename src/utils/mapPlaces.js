@@ -12,7 +12,9 @@ const IMG_RE = /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/;
 const COLOR_RE = /^#[0-9a-fA-F]{3,8}$/;
 
 /** Places closer than this belong to the same spot (GPS jitter, two rooms of one house, a garden...). */
-export const CLUSTER_RADIUS_M = 150;
+export const CLUSTER_RADIUS_M = 50;
+/** The Places list merges spots this close into one place (the map keeps the finer radius above). */
+export const LIST_RADIUS_M = 100;
 
 /** Distance in metres between two coordinates (haversine). */
 export function distanceMeters(lat1, lon1, lat2, lon2) {
@@ -30,7 +32,7 @@ export function distanceMeters(lat1, lon1, lat2, lon2) {
  * drawn; they are counted in `withoutCoords`.
  * @param {Array} places rows from listLocations (newest first)
  */
-export function groupPlaces(places) {
+export function groupPlaces(places, radius = CLUSTER_RADIUS_M) {
   const groups = [];
   let withoutCoords = 0;
   for (const p of places || []) {
@@ -43,7 +45,7 @@ export function groupPlaces(places) {
     let bestD = Infinity;
     for (const g of groups) {
       const d = distanceMeters(g.anchorLat, g.anchorLng, p.latitude, p.longitude);
-      if (d <= CLUSTER_RADIUS_M && d < bestD) {
+      if (d <= radius && d < bestD) {
         best = g;
         bestD = d;
       }
@@ -56,6 +58,7 @@ export function groupPlaces(places) {
         latitude: p.latitude,
         longitude: p.longitude,
         name: p.name || p.address || '',
+        address: p.address || '',
         entries: [],
         sumLat: 0,
         sumLng: 0,
@@ -68,6 +71,7 @@ export function groupPlaces(places) {
     best.latitude = best.sumLat / best.entries.length;
     best.longitude = best.sumLng / best.entries.length;
     if (!best.name) best.name = p.name || p.address || '';
+    if (!best.address) best.address = p.address || '';
   }
   return {
     groups: groups.map(({ anchorLat, anchorLng, sumLat, sumLng, ...g }) => g),
@@ -129,6 +133,55 @@ html,body,#map{margin:0;height:100%;background:${bg};}
   else if (bounds.length) map.fitBounds(bounds, { padding: [48, 48], maxZoom: 15 });
   else map.setView([20, 0], 2);
   map.on('click', function () { post({ type: 'deselect' }); });
+  post({ type: 'ready' });
+})();
+</script></body></html>`;
+}
+
+/**
+ * Map page for choosing a spot: tap the map or drag the pin; each change posts
+ * { type: 'pick', lat, lng }. `lat`/`lng` (optional) show an existing pin.
+ */
+export function buildPickerHtml({ lat = null, lng = null, background = '#EDEAE0', accent = '#778B6D', offlineText = '' }) {
+  const bg = COLOR_RE.test(background) ? background : '#EDEAE0';
+  const ac = COLOR_RE.test(accent) ? accent : '#778B6D';
+  const start = isNum(lat) && isNum(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180 ? { lat, lng } : null;
+  const offline = String(offlineText).replace(/[<>&"]/g, (ch) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' })[ch]);
+  return `<!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=5">
+<link rel="stylesheet" href="${LEAFLET_CSS}">
+<style>
+html,body,#map{margin:0;height:100%;background:${bg};}
+.leaflet-control-attribution{font:9px/1.4 sans-serif !important;background:rgba(255,255,255,.55) !important;color:#555 !important;padding:0 4px !important;}
+.leaflet-control-attribution a{color:inherit !important;pointer-events:none;}
+.pin{width:40px;height:40px;margin:0;border-radius:50% 50% 50% 8%;transform:rotate(-45deg);background:${ac};border:4px solid #fff;box-shadow:0 3px 9px rgba(0,0,0,.45);box-sizing:border-box;}
+#off{display:none;position:absolute;inset:0;align-items:center;justify-content:center;padding:24px;text-align:center;font:13px/1.6 sans-serif;color:#6b655a;}
+</style></head><body>
+<div id="map"></div><div id="off">${offline}</div>
+<script src="${LEAFLET_JS}"></script>
+<script>
+(function () {
+  var start = ${safeJson(start)};
+  function post(o) { if (window.ReactNativeWebView) window.ReactNativeWebView.postMessage(JSON.stringify(o)); }
+  if (!window.L) { var off = document.getElementById('off'); off.style.display = 'flex'; post({ type: 'offline' }); return; }
+  var map = L.map('map', { attributionControl: false, zoomControl: true, worldCopyJump: true });
+  L.tileLayer(${safeJson(TILE_URL)}, { maxZoom: 19, attribution: '&copy; OpenStreetMap' }).addTo(map);
+  if (L.control && L.control.attribution) L.control.attribution({ prefix: false, position: 'bottomright' }).addTo(map);
+  var icon = L.divIcon({ className: '', html: '<div class="pin"></div>', iconSize: [40, 40], iconAnchor: [20, 40] });
+  var marker = null;
+  function wrap(lng) { return ((((lng + 180) % 360) + 360) % 360) - 180; }
+  function place(lat, lng) {
+    lng = wrap(lng);
+    if (marker) marker.setLatLng([lat, lng]);
+    else {
+      marker = L.marker([lat, lng], { icon: icon, draggable: true }).addTo(map);
+      marker.on('dragend', function () { var p = marker.getLatLng(); post({ type: 'pick', lat: p.lat, lng: wrap(p.lng) }); });
+    }
+    post({ type: 'pick', lat: lat, lng: lng });
+  }
+  if (start) { map.setView([start.lat, start.lng], 15); place(start.lat, start.lng); }
+  else map.setView([35.6892, 51.3890], 11); // Tehran
+  map.on('click', function (e) { place(e.latlng.lat, e.latlng.lng); });
   post({ type: 'ready' });
 })();
 </script></body></html>`;

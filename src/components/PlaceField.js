@@ -1,6 +1,6 @@
 import React from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
-import { Crosshair, MapPin, Pencil, X } from 'lucide-react-native';
+import { Crosshair, Map as MapIcon, MapPin, Pencil, X } from 'lucide-react-native';
 import { Text, TextInput } from '../ui';
 
 /**
@@ -8,7 +8,7 @@ import { Text, TextInput } from '../ui';
  * Typing a name never needs permission; "use current location" asks for it only
  * when tapped and never tracks anything in the background.
  */
-export default function PlaceField({ value, onChange, onUseCurrent, locating, message, t, c, rtl }) {
+export default function PlaceField({ value, onChange, onUseCurrent, onPickMap, locating, message, t, c, rtl }) {
   const name = value?.name || '';
   const hasCoords = value && value.latitude != null && value.longitude != null;
   const align = rtl ? 'right' : 'left';
@@ -40,17 +40,28 @@ export default function PlaceField({ value, onChange, onUseCurrent, locating, me
         ) : null}
       </View>
 
-      <Pressable
-        onPress={onUseCurrent}
-        disabled={locating}
-        accessibilityRole="button"
-        style={[s.action, { borderColor: c.sageDark, backgroundColor: c.accentSoft, opacity: locating ? 0.7 : 1 }, rtl && s.rowReverse]}
-      >
-        {locating ? <ActivityIndicator size="small" color={c.sageDark} /> : <Crosshair size={15} color={c.sageDark} />}
-        <Text style={{ color: c.sageDark, fontSize: 11, fontWeight: '700' }}>
-          {locating ? t.fetchingLocation : t.useCurrentLocation}
-        </Text>
-      </Pressable>
+      <View style={[{ flexDirection: 'row', gap: 8 }, rtl && s.rowReverse]}>
+        <Pressable
+          onPress={onUseCurrent}
+          disabled={locating}
+          accessibilityRole="button"
+          style={[s.action, { flex: 1, borderColor: c.sageDark, backgroundColor: c.accentSoft, opacity: locating ? 0.7 : 1 }, rtl && s.rowReverse]}
+        >
+          {locating ? <ActivityIndicator size="small" color={c.sageDark} /> : <Crosshair size={15} color={c.sageDark} />}
+          <Text style={{ color: c.sageDark, fontSize: 11, fontWeight: '700' }}>
+            {locating ? t.fetchingLocation : t.useCurrentLocation}
+          </Text>
+        </Pressable>
+        <Pressable
+          onPress={onPickMap}
+          disabled={locating}
+          accessibilityRole="button"
+          style={[s.action, { flex: 1, borderColor: c.sageDark, backgroundColor: c.accentSoft, opacity: locating ? 0.7 : 1 }, rtl && s.rowReverse]}
+        >
+          <MapIcon size={15} color={c.sageDark} />
+          <Text style={{ color: c.sageDark, fontSize: 11, fontWeight: '700' }}>{t.chooseOnMap}</Text>
+        </Pressable>
+      </View>
 
       {needsName ? (
         <Text accessibilityLiveRegion="polite" style={{ color: c.accent, fontSize: 11, fontWeight: '600', lineHeight: 16, textAlign: align }}>{t.placeNameNeeded}</Text>

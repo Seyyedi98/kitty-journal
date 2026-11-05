@@ -95,10 +95,10 @@ const FAKE_LEAFLET = `(function(){
   function Map_(id){ this.el=document.getElementById(id); window.__mapCalls=[]; this.h={}; }
   Map_.prototype.setView=function(c,z){window.__mapCalls.push(['setView',c,z]);return this;};
   Map_.prototype.fitBounds=function(b,o){window.__mapCalls.push(['fitBounds',b.length]);return this;};
-  Map_.prototype.on=function(){return this;};
+  Map_.prototype.on=function(t,cb){this.h[t]=cb;window.__fire=function(lat,lng){this.h.click&&this.h.click({latlng:{lat:lat,lng:lng}});}.bind(this);return this;};
   window.L={ map:function(id){return new Map_(id);}, tileLayer:function(u){window.__tile=u;return {addTo:function(){}};},
     divIcon:function(o){return o;},
-    marker:function(ll,o){var m={addTo:function(map){var d=document.createElement('div');d.className='leaflet-marker-icon';d.innerHTML=o.icon.html;d.addEventListener('click',function(e){e.stopPropagation();m.cb&&m.cb();});map.el.appendChild(d);return m;},on:function(t,cb){m.cb=cb;return m;}};return m;} };
+    marker:function(ll,o){var m={setLatLng:function(x){window.__pin=x;return m;},getLatLng:function(){return {lat:0,lng:0};},addTo:function(map){var d=document.createElement('div');d.className='leaflet-marker-icon';d.innerHTML=o.icon.html;d.addEventListener('click',function(e){e.stopPropagation();m.cb&&m.cb();});map.el.appendChild(d);return m;},on:function(t,cb){m.cb=cb;return m;}};return m;} };
 })();`;
 
 console.log('boot');
@@ -176,6 +176,11 @@ await step('Plan: free users get the simple app (locks and teasers); switching t
   // Memories is Premium
   await label('tab-memories').click();
   await page.locator('[data-testid="premium-locked"]').waitFor();
+  for (const [tabName, hint] of [['Map', 'with your photos as pins'], ['Places', 'Give them names'], ['Photos', 'on one wall']]) {
+    await text(tabName, { exact: true }).first().dispatchEvent('click');
+    await waitForText(hint);
+  }
+  await text('See Premium', { exact: true }).waitFor();
   // Insights is the simple version
   await label('tab-insights').click();
   await waitForText('Showing the last 30 days');
@@ -239,6 +244,34 @@ await step('denied location permission shows a message, typed name still works',
   await page.evaluate(() => { window.__location.granted = true; });
   await text('Use current location').click();
   await waitFor(() => one('SELECT latitude FROM locations').latitude != null);
+});
+await step('choose the place on a map: tap, confirm, coordinates and name are saved', async () => {
+  await page.route('**/leaflet.js', (r) => r.fulfill({ contentType: 'application/javascript', body: FAKE_LEAFLET }));
+  await page.route('**/leaflet.css', (r) => r.fulfill({ contentType: 'text/css', body: '' }));
+  await label('Remove place').click();
+  await waitFor(() => !one('SELECT * FROM locations'));
+  await page.evaluate(() => { window.__nextReverse = null; });
+  await text('Choose on map').dispatchEvent('click');
+  await waitForText('Choose a place on the map');
+  const frame = page.frameLocator('[data-testid="map-frame"]').last();
+  await frame.locator('#map').waitFor();
+  await waitForText('Tap the map to drop a pin');
+  assert.equal(await text('Use this place').count(), 1);
+  const f = await (await page.locator('[data-testid="map-frame"]').last().elementHandle()).contentFrame();
+  await f.waitForFunction(() => typeof window.__fire === 'function');
+  await f.evaluate(() => window.__fire(41.1234, 29.0567));
+  await waitForText('41.12340, 29.05670');
+  await text('Use this place').dispatchEvent('click');
+  await waitFor(() => one('SELECT * FROM locations'));
+  const l = one('SELECT * FROM locations');
+  assert.equal(Math.round(l.latitude * 10000), 411234);
+  assert.equal(Math.round(l.longitude * 10000), 290567);
+  await waitFor(() => one('SELECT * FROM locations').name === 'Galata Tower');
+  // back to the state the next steps expect: typed name + the device fix
+  await page.getByPlaceholder('Where were you? (optional)').fill('Kadıköy pier');
+  await text('Use current location').click();
+  await waitFor(() => Math.round(one('SELECT latitude FROM locations').latitude * 1000) === 41008);
+  assert.equal(one('SELECT name FROM locations').name, 'Kadıköy pier');
 });
 await step('photo: picked, copied, thumbnailed, row inserted (big image is re-encoded)', async () => {
   await putFile('file:///cache/pick1.jpg', 3 * 1024 * 1024 + 50);
@@ -363,7 +396,7 @@ await step('Backup (B1): ZIP + JSON export, share sheet, last-backup status', as
   await page.evaluate(() => { for (const [k, v] of window.__files) { if (/\.(jpg|jpeg|png|webp)$/i.test(k)) window.__files.set(k, 'QUJDRA'.repeat(Math.ceil(v.length / 6)).slice(0, Math.floor(v.length / 4) * 4 || 4)); } });
   await label('tab-home').click();
   await label('tab-settings').click();
-  await text('Backup & restore').click();
+  await text('Backup & restore').dispatchEvent('click');
   await waitForText('No backup yet');
   await text('Full backup (.zip)', { exact: true }).last().click();
   await waitForText('Backup ready');
@@ -419,7 +452,7 @@ await step('Backup (B1): ZIP + JSON export, share sheet, last-backup status', as
 console.log('B2a: restore preview');
 await step('Restore (B2a): restore card visible; cancel → no change; bad file → error', async () => {
   await label('tab-settings').click();
-  await text('Backup & restore').click();
+  await text('Backup & restore').dispatchEvent('click');
   await waitForText('Restore from a file');
 
   const restoreBtn = () => page.locator('[role="button"]').filter({ hasText: 'Restore from a file' }).first();
@@ -449,7 +482,7 @@ await step('Restore (B2a): restore card visible; cancel → no change; bad file 
 await step('Restore (B2b): JSON merge adds missing entry, keeps existing; replace asks to confirm', async () => {
   raw.exec("INSERT INTO entries (uuid,title,body,journal_date,favorite,pinned,created_at,updated_at) VALUES ('b2b0000000000000000000000000000a','restore me','text','2026-10-22',0,0,'2026-10-22T10:00:00.000Z','2026-10-22T10:00:00.000Z')");
   await label('tab-settings').click();
-  await text('Backup & restore').click();
+  await text('Backup & restore').dispatchEvent('click');
   await waitForText('Restore from a file');
   await text('Text export (.json)', { exact: true }).last().click();
   await waitForText('text only');
@@ -642,6 +675,61 @@ await step('Trash screen lists a deleted entry; restore works; purge removes fil
   assert.ok(!f.includes('file:///docs/attachments/' + att.file_name), 'photo file deleted');
   assert.ok(!f.includes('file:///docs/attachments/' + att.thumb_name), 'thumb file deleted');
   await waitForText('Trash is empty');
+});
+
+console.log('stories');
+await step('Home stories: On this day / Last month / Last year circles, timed auto-advance, tap, Open entry; locked for free', async () => {
+  const d = new Date(); const y = d.getFullYear(); const mm = String(d.getMonth() + 1).padStart(2, '0'); const dd = String(d.getDate()).padStart(2, '0');
+  if (`${mm}-${dd}` === '02-29') return;
+  const pm = new Date(y, d.getMonth() - 1, 15); const pmKey = `${pm.getFullYear()}-${String(pm.getMonth() + 1).padStart(2, '0')}-15`;
+  const ins = (u, title, date, fav) => `('${u}','${title}','body of ${title}','${date}',${fav},0,'t','t')`;
+  raw.exec(`INSERT INTO entries (uuid,title,body,journal_date,favorite,pinned,created_at,updated_at) VALUES
+    ${ins('0a0000000000000000000000000000a1', 'memory one year', `${y - 1}-${mm}-${dd}`, 0)},
+    ${ins('0a0000000000000000000000000000a2', 'memory two years', `${y - 2}-${mm}-${dd}`, 0)},
+    ${ins('0a0000000000000000000000000000a3', 'best of last month', pmKey, 1)},
+    ${ins('0a0000000000000000000000000000a4', 'best of last year', `${y - 1}-06-15`, 1)}`);
+  await label('tab-home').click();
+  await waitForText('Recent entries');
+  // a saved entry makes the app reload its list (and picks up the rows added above)
+  await label('New entry').click();
+  await page.getByPlaceholder('A title for today (optional)').fill('zz refresh');
+  await waitFor(() => one("SELECT id FROM entries WHERE title='zz refresh'"));
+  await text('Done', { exact: true }).click();
+  const circle = (k) => page.locator(`[data-testid="story-${k}"]`);
+  await circle('today').waitFor(); await circle('lastMonth').waitFor(); await circle('lastYear').waitFor();
+  assert.equal(await page.locator('[data-testid="on-this-day"]').count(), 0, 'no old card');
+  await page.evaluate(() => { window.__STORY_MS = 500; });
+  // On this day: 2 slides, nearest year first, advances on its own, closes after the last
+  await circle('today').dispatchEvent('click');
+  await page.locator('[data-testid="story-viewer"]').waitFor();
+  await waitForText('A year ago'); await waitForText('memory one year');
+  await waitForText('2 years ago'); await waitForText('memory two years');
+  await waitFor(async () => (await page.locator('[data-testid="story-viewer"]').count()) === 0);
+  // tap right goes forward and the last tap closes; Open entry shows the preview
+  await page.evaluate(() => { window.__STORY_MS = 60000; });
+  await circle('lastMonth').dispatchEvent('click');
+  await waitForText('best of last month');
+  await page.locator('[data-testid="story-next"]').dispatchEvent('click');
+  await waitFor(async () => (await page.locator('[data-testid="story-viewer"]').count()) === 0);
+  await circle('lastYear').dispatchEvent('click');
+  await waitForText('best of last year');
+  await text('Open entry', { exact: true }).dispatchEvent('click');
+  await page.locator('[data-testid="entry-preview"]').waitFor();
+  await closePreview();
+  // free plan: circles are locked and open the Premium popup
+  await label('tab-settings').click();
+  await text('Free', { exact: true }).first().click();
+  await waitFor(() => (one("SELECT value FROM app_settings WHERE key='premium'") || {}).value === 'false');
+  await label('tab-home').click();
+  await circle('today').dispatchEvent('click');
+  await waitForText('Stories on Home are part of Premium');
+  assert.equal(await page.locator('[data-testid="story-viewer"]').count(), 0, 'no player for free users');
+  await page.locator('[data-testid="premium-later"]').click();
+  await label('tab-settings').click();
+  await text('Premium', { exact: true }).first().click();
+  await waitFor(() => (one("SELECT value FROM app_settings WHERE key='premium'") || {}).value === 'true');
+  await label('tab-home').click();
+  raw.exec("DELETE FROM entries WHERE uuid LIKE '0a00000000000000000000000000%' OR title='zz refresh'");
 });
 
 console.log('rich editor');
@@ -922,7 +1010,7 @@ await step('Restore (B2b): replace makes a safety backup first and swaps the jou
   raw.exec("UPDATE entries SET created_at='2026-10-01T10:00:00.000Z' WHERE length(created_at)<20; UPDATE entries SET updated_at='2026-10-01T10:00:00.000Z' WHERE length(updated_at)<20");
   raw.exec("INSERT OR IGNORE INTO entries (uuid,title,body,journal_date,favorite,pinned,created_at,updated_at) VALUES ('b2b0000000000000000000000000000a','restore me','text','2026-10-22',0,0,'2026-10-22T10:00:00.000Z','2026-10-22T10:00:00.000Z')");
   await label('tab-settings').click();
-  await text('Backup & restore').click();
+  await text('Backup & restore').dispatchEvent('click');
   await waitForText('Restore from a file');
   await text('Text export (.json)', { exact: true }).last().click();
   await waitForText('text only');
@@ -991,6 +1079,8 @@ await step('Reminders (B4): permission, schedule per weekday, no duplicates on e
   await text('Writing reminder', { exact: true }).first().click();
   await waitForText('Remind me to write');
   const toggle = page.locator('input[type="checkbox"][aria-label="Remind me to write"]');
+  const dayLabels = await page.locator('[role="button"][aria-label]').evaluateAll((els) => els.map((e) => e.getAttribute('aria-label')).filter((l) => /^(Mon|Tue|Wed|Thu|Fri|Sat|Sun)$/.test(l)));
+  assert.deepEqual(dayLabels, ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'], 'week starts on Monday');
   const scheduled = () => page.evaluate(() => window.__scheduled.length);
 
   // permission denied: stays off, explains why, schedules nothing

@@ -103,10 +103,12 @@ export function formatCalendarMonth(year, month, locale = 'en', calendar = 'greg
   return new Intl.DateTimeFormat(localeTag, { calendar: calendar === 'solarHijri' ? 'persian' : 'gregory', month: 'long', year: 'numeric' }).format(firstDate);
 }
 
+/** First day of the week (0 = Sunday): Saturday for Persian, Monday for everyone else. */
+export const weekStartFor = (locale) => (locale === 'fa' ? 6 : 1);
+
 export function calendarWeekdayLabels(locale = 'en') {
   const localeTag = locale === 'fa' ? 'fa-IR' : locale === 'tr' ? 'tr-TR' : 'en-US';
   const formatter = new Intl.DateTimeFormat(localeTag, { weekday: 'short', timeZone: 'UTC' });
-  // Start on Saturday for Persian, Monday for Turkish, Sunday for English.
-  const start = locale === 'fa' ? 6 : locale === 'tr' ? 1 : 0;
+  const start = weekStartFor(locale);
   return Array.from({ length: 7 }, (_, index) => formatter.format(new Date(Date.UTC(2023, 0, 1 + ((start + index) % 7)))));
 }

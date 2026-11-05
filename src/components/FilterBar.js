@@ -1,4 +1,5 @@
 import React, { useRef } from 'react';
+import MoodFace from './MoodFace';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { Star, X } from 'lucide-react-native';
 import { ScrollView, Text } from '../ui';
@@ -61,7 +62,7 @@ export default function FilterBar({ filters, setFilters, tags, t, c, rtl }) {
             onPress={() => toggle({ mood: filters.mood === m.key ? null : m.key })}
             label={t[m.key]}
           >
-            <Text style={{ fontSize: 14 }}>{m.face}</Text>
+            <MoodFace mood={m.key} size={18} />
           </Chip>
         ))}
         {usedTags.map((tag) => (

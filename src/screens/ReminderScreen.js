@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { ScrollView, Text } from '../ui';
 import { Button, Card, Note, SubHeader, ToggleRow } from '../components/common';
+import { weekStartFor } from '../calendar';
 import { loadSettings, saveSetting } from '../db/repository';
 import { DEFAULT_REMINDER, normalizeReminder } from '../services/reminders';
 import { applyReminders, requestPermission } from '../platform/notifications';
@@ -35,6 +36,7 @@ export default function ReminderScreen({ db, t, c, rtl, language, onBack, runExt
 
   // Weekday names for 0 = Sunday … 6 = Saturday, in the app language.
   const dayNames = useMemo(() => {
+    if (locale.startsWith('fa')) return ['یکشنبه', 'دوشنبه', 'سه‌شنبه', 'چهارشنبه', 'پنج‌شنبه', 'جمعه', 'شنبه'];
     let f;
     try {
       f = new Intl.DateTimeFormat(locale, { weekday: 'short', timeZone: 'UTC' });
@@ -43,6 +45,8 @@ export default function ReminderScreen({ db, t, c, rtl, language, onBack, runExt
     }
     return [0, 1, 2, 3, 4, 5, 6].map((d) => f.format(new Date(Date.UTC(2024, 0, 7 + d))));
   }, [locale]);
+  // Persian weekday names are too long for the day buttons: show one letter, speak the whole name.
+  const dayShort = (d) => (locale.startsWith('fa') ? ['ی', 'د', 'س', 'چ', 'پ', 'ج', 'ش'][d] : dayNames[d]);
 
   const commit = async (next, { announce = true } = {}) => {
     setProblem(false);
@@ -78,7 +82,10 @@ export default function ReminderScreen({ db, t, c, rtl, language, onBack, runExt
     commit({ ...reminder, days }, { announce: reminder.enabled });
   };
 
-  const order = rtl ? [6, 5, 4, 3, 2, 1, 0] : [0, 1, 2, 3, 4, 5, 6];
+  // Week starts on Saturday (Persian, shown right-to-left) or Monday.
+  const first = weekStartFor(language);
+  const week = [0, 1, 2, 3, 4, 5, 6].map((i) => (first + i) % 7);
+  const order = rtl ? [...week].reverse() : week;
   return (
     <ScrollView contentContainerStyle={s.page}>
       <SubHeader title={t.reminders} onBack={onBack} c={c} rtl={rtl} t={t} />
@@ -105,7 +112,7 @@ export default function ReminderScreen({ db, t, c, rtl, language, onBack, runExt
                 accessibilityLabel={dayNames[d]}
                 style={[s.day, { backgroundColor: on ? c.sage : c.card, borderColor: on ? c.sageDark : c.line }]}
               >
-                <Text style={{ color: on ? c.sageDark : c.muted, fontSize: 12, fontWeight: on ? '700' : '500' }}>{dayNames[d]}</Text>
+                <Text style={{ color: on ? c.sageDark : c.muted, fontSize: locale.startsWith('fa') ? 15 : 12, fontWeight: on ? '700' : '500' }}>{dayShort(d)}</Text>
               </Pressable>
             );
           })}

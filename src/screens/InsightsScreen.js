@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import MoodFace from '../components/MoodFace';
 import { StyleSheet, View } from 'react-native';
 import { BookOpen, Star } from 'lucide-react-native';
 import { ScrollView, Text } from '../ui';
@@ -7,10 +8,9 @@ import { usePremium } from '../premium';
 import { MOODS } from '../theme';
 import { EMOTIONS } from '../utils/emotions';
 import { RANGE_PRESETS, computeInsights, rangeFor } from '../utils/insights';
-import { calendarDateKey, formatDateKey } from '../calendar';
+import { calendarDateKey, formatDateKey, weekStartFor } from '../calendar';
 import { fmt } from '../i18n';
 
-const WEEK_START = { fa: 6, tr: 1, en: 0 };
 const CHART_H = 84;
 
 /** Vertical bars. items: [{ label, value }]; value null = nothing recorded (drawn as a faint dot). */
@@ -40,7 +40,7 @@ function Rows({ rows, c, rtl, color }) {
   const maxCount = Math.max(1, ...rows.map((r) => r.count));
   return rows.map((r) => (
     <View key={r.key} style={[s.row, rtl && s.rowReverse]} accessible accessibilityLabel={`${r.label}: ${r.countText}`}>
-      <Text style={s.face}>{r.face || ''}</Text>
+      {r.mood ? <MoodFace mood={r.mood} size={20} style={{ marginHorizontal: 1 }} /> : <Text style={s.face}>{r.face || ''}</Text>}
       <Text style={{ color: c.muted, fontSize: 11, width: 74, textAlign: rtl ? 'right' : 'left' }} numberOfLines={1}>{r.label}</Text>
       <View style={[s.track, { backgroundColor: c.accentSoft }, rtl && { transform: [{ scaleX: -1 }] }]}>
         <View style={{ width: `${(r.count / maxCount) * 100}%`, height: '100%', borderRadius: 6, backgroundColor: color }} />
@@ -78,7 +78,7 @@ export default function InsightsScreen({ t, c, rtl, language, calendar, today, e
   const shownPreset = premium ? preset : '30d';
   const range = useMemo(() => rangeFor(shownPreset, today), [shownPreset, today]);
   const data = useMemo(
-    () => computeInsights({ entries, dailyMoods: dayMoods, range, today, calendar, weekStart: WEEK_START[language] ?? 0 }),
+    () => computeInsights({ entries, dailyMoods: dayMoods, range, today, calendar, weekStart: weekStartFor(language) }),
     [entries, dayMoods, range, today, calendar, language],
   );
   const { totals } = data;
@@ -90,7 +90,7 @@ export default function InsightsScreen({ t, c, rtl, language, calendar, today, e
 
   const moodRows = data.mood.counts.map((m) => ({
     key: m.key,
-    face: MOODS.find((x) => x.key === m.key)?.face,
+    mood: m.key,
     label: t[m.key],
     count: m.count,
     countText: num(m.count),
@@ -108,7 +108,6 @@ export default function InsightsScreen({ t, c, rtl, language, calendar, today, e
 
   return (
     <ScrollView contentContainerStyle={s.page}>
-      <Text style={[s.eyebrow, { color: c.muted, textAlign: align }]}>{t.insights}</Text>
       <Text style={[s.title, { color: c.ink, textAlign: align }]}>{t.insights}</Text>
 
       {premium ? <Segmented

@@ -49,6 +49,8 @@ function AnimatedTab({ tab, active, onPress, colors, compact = false, label, rtl
   // Plain strings computed here: functions defined outside a worklet cannot be called on the UI thread.
   const pillOn = activeColor(colors);
   const pillOff = clear(pillOn);
+  // Persian labels are short and sit against the icon, so the pill needs less room after them.
+  const labelMax = rtl ? 74 : LABEL_MAX_WIDTH;
   const rowStyle = useAnimatedStyle(() => ({
     backgroundColor: interpolateColor(progress.value, [0, 1], [pillOff, pillOn]),
   }));
@@ -56,7 +58,7 @@ function AnimatedTab({ tab, active, onPress, colors, compact = false, label, rtl
     width: interpolate(
       progress.value,
       [0, 1],
-      [0, compact ? 0 : LABEL_MAX_WIDTH],
+      [0, compact ? 0 : labelMax],
       Extrapolation.CLAMP,
     ),
   }));
@@ -221,5 +223,5 @@ const styles = StyleSheet.create({
     paddingRight: 16,
     paddingLeft: 1,
   },
-  labelRtl: { paddingRight: 6, paddingLeft: 14, textAlign: "center" },
+  labelRtl: { paddingRight: 0, paddingLeft: 14, textAlign: "right" },
 });

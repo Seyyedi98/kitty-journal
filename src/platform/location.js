@@ -102,3 +102,27 @@ export async function getCurrentPlace() {
     return { ok: false, reason: "unavailable" };
   }
 }
+
+/**
+ * Name + address for coordinates picked on the map. Needs no permission (it only
+ * asks the geocoder); bounded, and returns empty strings when offline.
+ * @returns {Promise<{name:string, address:string}>}
+ */
+export async function lookupPlace(latitude, longitude) {
+  try {
+    const [place] = await withTimeout(
+      Location.reverseGeocodeAsync({ latitude, longitude }),
+      GEOCODE_TIMEOUT_MS,
+      "reverseGeocodeAsync",
+    );
+    if (!place) return { name: "", address: "" };
+    return {
+      name: place.name || place.street || place.district || "",
+      address: [place.street, place.city || place.subregion, place.region, place.country]
+        .filter(Boolean)
+        .join(", "),
+    };
+  } catch {
+    return { name: "", address: "" };
+  }
+}

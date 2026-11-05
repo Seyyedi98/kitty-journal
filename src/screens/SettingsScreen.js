@@ -1,10 +1,11 @@
 import React from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
-import { Archive, Bell, Crown, Palette, ChevronLeft, ChevronRight, Heart, HardDrive, Lock, Tag, Trash2 } from 'lucide-react-native';
+import { Archive, Bell, Crown, UserRound, Palette, ChevronLeft, ChevronRight, Heart, HardDrive, Lock, Tag, Trash2 } from 'lucide-react-native';
 import { ScrollView, Text } from '../ui';
 import { Card, LinkRow, Segmented } from '../components/common';
 import { fmt } from '../i18n';
 import { usePremium } from '../premium';
+import { useAccount } from '../account/AccountContext';
 
 const THEME_LABELS = { sage: 'themeSage', rose: 'themeRose', lavender: 'themeLavender', ocean: 'themeOcean', cozy: 'themeCozy', navy: 'themeNavy', vanilla: 'themeVanilla', professional: 'themeProfessional', summer: 'themeSummer', forest: 'themeForest', sunset: 'themeSunset' };
 
@@ -33,12 +34,12 @@ export default function SettingsScreen({
   num = String,
 }) {
   const { request } = usePremium();
+  const { user } = useAccount();
   const Chevron = rtl ? ChevronLeft : ChevronRight;
   const chevron = <Chevron size={16} color={c.muted} />;
   const align = rtl ? 'right' : 'left';
   return (
     <ScrollView contentContainerStyle={s.page}>
-      <Text style={[s.eyebrow, { color: c.muted }]}>{t.settings}</Text>
       <Text style={[s.title, { color: c.ink }]}>{t.settings}</Text>
 
       <Card title={t.premiumPlan} c={c} rtl={rtl}>
@@ -53,6 +54,10 @@ export default function SettingsScreen({
           ]}
         />
         <LinkRow icon={Crown} title={t.premiumIncluded} onPress={() => onOpen('premium')} trailing={chevron} c={c} rtl={rtl} last />
+      </Card>
+
+      <Card c={c} rtl={rtl} style={{ gap: 0 }}>
+        <LinkRow icon={UserRound} title={t.account} subtitle={user ? fmt(t.accSignedInAs, { name: user.name }) : t.accRowHint} onPress={() => onOpen('account')} trailing={chevron} c={c} rtl={rtl} last />
       </Card>
 
       <Card title={t.settingsGeneral} c={c} rtl={rtl}>

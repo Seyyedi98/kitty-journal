@@ -13,8 +13,11 @@ const { groupPlaces, distanceMeters } = await load('../src/utils/mapPlaces.js');
 const { foldText, matchesQuery, countWords, tagKey, cleanTagName } = await load('../src/utils/text.js');
 const { runMigrations, LATEST_VERSION } = await load('../src/db/migrations.js');
 const repo = await load('../src/db/repository.js');
-const { gregorianToJalali, jalaliToGregorian, jalaliMonthLength, calendarDateKey, getCalendarParts } = await load('../src/calendar.js');
+const { gregorianToJalali, jalaliToGregorian, jalaliMonthLength, calendarDateKey, getCalendarParts, weekStartFor, calendarWeekdayLabels } = await load('../src/calendar.js');
 const { htmlToBlocks } = await load('../src/utils/richView.js');
+const { onThisDay } = await load('../src/utils/onThisDay.js');
+const { buildStories, importance, STORY_MAX } = await load('../src/utils/stories.js');
+const { todayData, monthData, weekData } = await load('../src/widgets/widgetData.js');
 const { buildEntryHtml, TEMPLATES } = await load('../src/utils/entryPdf.js');
 const { buildPalette, THEME_KEYS, contrastRatio } = await load('../src/theme.js');
 const { matchesSearch, topTags } = await load('../src/utils/filters.js');
@@ -265,12 +268,84 @@ await test('groupPlaces: places a few hundred metres apart stay separate; missin
   assert.equal(groups.length, 2);
   assert.equal(withoutCoords, 1);
 });
+await test('groupPlaces: 50 m radius — 40 m apart is one place, 70 m apart is two', () => {
+  const near = groupPlaces([{ id: 1, entry_id: 1, latitude: 41.0, longitude: 29.0 }, { id: 2, entry_id: 2, latitude: 41.00036, longitude: 29.0 }]);
+  assert.equal(near.groups.length, 1);
+  const far = groupPlaces([{ id: 1, entry_id: 1, latitude: 41.0, longitude: 29.0 }, { id: 2, entry_id: 2, latitude: 41.00063, longitude: 29.0 }]);
+  assert.equal(far.groups.length, 2);
+});
+await test('groupPlaces: Places list radius 100 m merges many "Home" spots 80 m apart; map radius keeps them apart', () => {
+  const homes = [0, 1, 2].map((i) => ({ id: i + 1, entry_id: i + 1, latitude: 35.7 + i * 0.00036, longitude: 51.4, name: 'Home', address: 'Valiasr St', journal_date: '2026-10-0' + (3 - i) }));
+  assert.equal(groupPlaces(homes, 100).groups.length, 1);
+  assert.equal(groupPlaces(homes, 100).groups[0].entries.length, 3);
+  assert.equal(groupPlaces(homes, 100).groups[0].address, 'Valiasr St');
+  assert.equal(groupPlaces(homes).groups.length, 2, 'default (map) radius is 50 m');
+});
 await test('groupPlaces: a chain of places is not merged into one endless cluster', () => {
   const chain = Array.from({ length: 6 }, (_, i) => ({ id: i + 1, entry_id: i + 1, latitude: 41.0 + i * 0.0009, longitude: 29.0 })); // 100 m steps
   const { groups } = groupPlaces(chain);
   assert.ok(groups.length >= 3, 'got ' + groups.length);
 });
 
+await test('widgets: today and month data follow language, calendar and week start', () => {
+  const now = new Date(2026, 10, 3, 9, 0); // Tue 3 Nov 2026 = 12 Aban 1405
+  const en = todayData({ now, language: 'en' });
+  assert.equal(en.day, '3'); assert.equal(en.weekday, 'Tuesday'); assert.equal(en.month, 'November');
+  const fa = todayData({ now, language: 'fa' });
+  assert.equal(fa.day, '۱۲'); assert.equal(fa.rtl, true);
+  const m = monthData({ now, language: 'en' });
+  assert.equal(m.weekdays.length, 7); assert.equal(m.weekdays[0], 'Mo');
+  assert.ok(m.weeks.every((w) => w.length === 7));
+  assert.equal(m.weeks[0].findIndex((x) => !x.blank), 6, '1 Nov 2026 is a Sunday: last column of a Monday-first week');
+  assert.equal(m.weeks.flat().filter((x) => x.today).length, 1);
+  assert.equal(m.weeks.flat().filter((x) => !x.blank).length, 30);
+  const mf = monthData({ now, language: 'fa' });
+  assert.equal(mf.weeks.flat().filter((x) => !x.blank).length, 30, 'Aban has 30 days');
+  assert.equal(mf.weeks.flat().find((x) => x.today).label, '۱۲');
+  assert.equal(mf.weekdays.length, 7);
+});
+await test('widgets: week strip is the current week, Monday first (Saturday first, right to left, in Persian)', () => {
+  const now = new Date(2026, 10, 3, 9, 0); // Tuesday
+  const w = weekData({ now, language: 'en' });
+  assert.deepEqual(w.days.map((d) => d.label), ['2', '3', '4', '5', '6', '7', '8']);
+  assert.equal(w.days.findIndex((d) => d.today), 1);
+  const f = weekData({ now, language: 'fa' });
+  assert.equal(f.days.length, 7);
+  assert.equal(f.days.find((d) => d.today).label, '۱۲');
+  // Persian week starts on Saturday 9 Aban; rows run right to left, so Saturday is the last array item
+  assert.equal(f.days[f.days.length - 1].label, '۹', 'Saturday 9 Aban 1405 starts this week');
+});
+await test('onThisDay: same day and month in earlier years, nearest first; Solar Hijri uses Jalali days', () => {
+  const es = [
+    { id: 1, journal_date: '2024-11-03' }, { id: 2, journal_date: '2025-11-03' }, { id: 3, journal_date: '2026-11-03' },
+    { id: 4, journal_date: '2025-11-04' }, { id: 5, journal_date: '2025-03-03' },
+  ];
+  const g = onThisDay(es, '2026-11-03', 'gregorian');
+  assert.deepEqual(g.map((x) => [x.entry.id, x.yearsAgo]), [[2, 1], [1, 2]]);
+  // 12 Aban 1405 = 3 Nov 2026; 12 Aban 1404 = 3 Nov 2025 (+/- a day around leap years): same Jalali day
+  const j = onThisDay([{ id: 9, journal_date: '2025-11-03' }, { id: 8, journal_date: '2025-11-04' }], '2026-11-03', 'solarHijri');
+  assert.ok(j.length <= 1 && j.every((x) => x.yearsAgo === 1));
+});
+await test('stories: today = same day earlier years; month/year = only important entries (favourite, pinned or photo)', () => {
+  const E = (id, date, o = {}) => ({ id, journal_date: date, title: 't' + id, body: '', favorite: 0, pinned: 0, attachmentCount: 0, ...o });
+  const es = [
+    E(1, '2025-11-03'), E(2, '2024-11-03'),                       // on this day
+    E(3, '2026-10-05', { favorite: 1 }), E(4, '2026-10-06'), E(5, '2026-10-20', { attachmentCount: 2 }), // last month
+    E(6, '2025-03-01', { pinned: 1 }), E(7, '2025-04-01'), E(8, '2025-06-01', { attachmentCount: 1 }),   // last year
+    E(9, '2026-11-03'),
+  ];
+  const g = buildStories(es, '2026-11-03', 'gregorian');
+  assert.deepEqual(g.map((x) => x.key), ['today', 'lastMonth', 'lastYear']);
+  assert.deepEqual(g[0].items.map((x) => [x.id, x.yearsAgo]), [[1, 1], [2, 2]]);
+  assert.deepEqual(g[1].items.map((x) => x.id), [3, 5], 'unmarked entry 4 is left out; played oldest first');
+  assert.deepEqual(g[2].items.map((x) => x.id), [6, 8]);
+  assert.equal(buildStories([E(1, '2026-11-03')], '2026-11-03').length, 0, 'nothing to show');
+  assert.ok(importance(E(1, 'x', { favorite: 1, attachmentCount: 1 })) > importance(E(2, 'x', { favorite: 1 })));
+  const many = Array.from({ length: 20 }, (_, i) => E(i + 1, '2026-10-' + String((i % 28) + 1).padStart(2, '0'), { favorite: 1 }));
+  assert.equal(buildStories(many, '2026-11-03')[0].items.length, STORY_MAX, 'capped');
+  // January looks back to December of the year before
+  assert.deepEqual(buildStories([E(1, '2025-12-20', { favorite: 1 })], '2026-01-10')[0].items.map((x) => x.id), [1]);
+});
 await test('themes: every theme/mode keeps readable contrast', () => {
   for (const k of THEME_KEYS) for (const dark of [false, true]) {
     const p = buildPalette(k, dark);
@@ -333,6 +408,12 @@ await test('pdf: photos are sized on their wrapper (full width alone, two per ro
   assert.ok(html.includes('.photos.many .ph { width: calc(50% - 5px); }'));
   assert.ok(!/\.photos\.many img \{ width: calc/.test(html), 'img must not be given a fraction of its shrink-wrapped parent');
   assert.equal((html.match(/class="ph"/g) || []).length, 3);
+});
+await test('week starts on Monday (en, tr) and Saturday (fa)', () => {
+  assert.equal(weekStartFor('en'), 1); assert.equal(weekStartFor('tr'), 1); assert.equal(weekStartFor('fa'), 6);
+  assert.equal(calendarWeekdayLabels('en')[0], 'Mon');
+  assert.equal(calendarWeekdayLabels('en')[6], 'Sun');
+  assert.equal(calendarWeekdayLabels('fa')[0], 'شنبه');
 });
 console.log(`\n${passed} passed, ${failures.length} failed`);
 if (failures.length) { console.log('Failed:', failures.join('; ')); process.exit(1); }

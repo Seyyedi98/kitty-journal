@@ -8,7 +8,7 @@ import EmptyState from '../components/EmptyState';
 import PhotoViewer from '../components/PhotoViewer';
 import PlacesMap from '../components/PlacesMap';
 import RenamePlaceModal from '../components/RenamePlaceModal';
-import { groupPlaces } from '../utils/mapPlaces';
+import { LIST_RADIUS_M, groupPlaces } from '../utils/mapPlaces';
 import { listAllAttachments, listLocations, renameLocations } from '../db/repository';
 import { attachmentUri } from '../services/photos';
 import { deps } from '../platform/deps';
@@ -86,6 +86,22 @@ export default function MemoriesScreen({ db, t, c, rtl, language, calendar, refr
     for (const p of photos || []) if (!m.has(p.entry_id)) m.set(p.entry_id, p);
     return m;
   }, [photos]);
+  // Places tab: spots within LIST_RADIUS_M are one place; places without coordinates stay single.
+  const [expanded, setExpanded] = useState({});
+  const listItems = useMemo(() => {
+    const near = groupPlaces(places || [], LIST_RADIUS_M).groups;
+    const single = (places || [])
+      .filter((p) => p.latitude == null || p.longitude == null)
+      .map((p) => ({
+        key: `id${p.id}`,
+        latitude: null,
+        longitude: null,
+        name: p.name || p.address || '',
+        address: p.address || '',
+        entries: [{ location_id: p.id, entry_id: p.entry_id, title: p.entry_title || '', journal_date: p.journal_date, placeName: p.name || '' }],
+      }));
+    return [...near, ...single];
+  }, [places]);
   const selected = groups.find((g) => g.key === selectedKey) || null;
 
   // Small photo thumbnails for the map markers (read once, as base64 for the WebView).
@@ -174,7 +190,6 @@ export default function MemoriesScreen({ db, t, c, rtl, language, calendar, refr
 
   return (
     <ScrollView contentContainerStyle={s.page}>
-      <Text style={[s.eyebrow, { color: c.muted }]}>{t.memories}</Text>
       <Text style={[s.title, { color: c.ink }]}>{t.memories}</Text>
 
       <View style={[s.tabs, { backgroundColor: c.card, borderColor: c.line }, rtl && s.rowReverse]}>
@@ -293,10 +308,13 @@ export default function MemoriesScreen({ db, t, c, rtl, language, calendar, refr
       ) : (
         <>
           <Text style={{ color: c.muted, fontSize: 10, lineHeight: 15, textAlign: rtl ? 'right' : 'left' }}>{t.placesNote}</Text>
-          {places.map((p) => {
+          {listItems.map((p) => {
             const hasCoords = p.latitude != null && p.longitude != null;
+            const many = p.entries.length > 1;
+            const open = !!expanded[p.key];
+            const latest = p.entries[0];
             return (
-              <View key={p.id} style={[s.placeCard, { backgroundColor: c.card, borderColor: c.line }]}>
+              <View key={p.key} style={[s.placeCard, { backgroundColor: c.card, borderColor: c.line }]}>
                 <View style={[s.placeTop, rtl && s.rowReverse]}>
                   <View style={[s.pin, { backgroundColor: c.sage }]}>
                     <MapPin size={16} color={c.sageDark} />
@@ -306,8 +324,9 @@ export default function MemoriesScreen({ db, t, c, rtl, language, calendar, refr
                       {p.name || p.address || t.placeUnnamed}
                     </Text>
                     <Text style={{ color: c.muted, fontSize: 10, marginTop: 3, textAlign: rtl ? 'right' : 'left' }}>
-                      {dateText(p.journal_date)}
-                      {p.entry_title ? ` · ${p.entry_title}` : ''}
+                      {many
+                        ? `${fmt(t.entriesCount, { n: num(p.entries.length) })} · ${dateText(latest.journal_date)}`
+                        : `${dateText(latest.journal_date)}${latest.title ? ` · ${latest.title}` : ''}`}
                     </Text>
                     {p.name && p.address ? (
                       <Text style={{ color: c.muted, fontSize: 10, marginTop: 2, textAlign: rtl ? 'right' : 'left' }}>{p.address}</Text>
@@ -315,9 +334,13 @@ export default function MemoriesScreen({ db, t, c, rtl, language, calendar, refr
                   </View>
                 </View>
                 <View style={[s.placeActions, rtl && s.rowReverse]}>
-                  {nameButton([p.id], p.name, p.entry_title || dateText(p.journal_date))}
-                  <Pressable onPress={() => onOpenEntry(p.entry_id)} accessibilityRole="button" style={[s.pill, { borderColor: c.line }]}>
-                    <Text style={{ color: c.ink, fontSize: 11, fontWeight: '600' }}>{t.viewEntry}</Text>
+                  {nameButton(p.entries.map((e) => e.location_id), p.name, many ? fmt(t.entriesCount, { n: num(p.entries.length) }) : latest.title || dateText(latest.journal_date))}
+                  <Pressable
+                    onPress={() => (many ? setExpanded((x) => ({ ...x, [p.key]: !x[p.key] })) : onOpenEntry(latest.entry_id))}
+                    accessibilityRole="button"
+                    style={[s.pill, { borderColor: c.line }]}
+                  >
+                    <Text style={{ color: c.ink, fontSize: 11, fontWeight: '600' }}>{many ? (open ? t.hideEntries : t.showEntries) : t.viewEntry}</Text>
                   </Pressable>
                   {hasCoords ? (
                     <Pressable onPress={() => openMaps(p)} accessibilityRole="button" style={[s.pill, { borderColor: c.sageDark, backgroundColor: c.accentSoft }]}>
@@ -325,6 +348,17 @@ export default function MemoriesScreen({ db, t, c, rtl, language, calendar, refr
                     </Pressable>
                   ) : null}
                 </View>
+                {many && open ? (
+                  <View style={{ gap: 2, marginTop: 4 }}>
+                    {p.entries.map((e) => (
+                      <Pressable key={e.location_id} onPress={() => onOpenEntry(e.entry_id)} accessibilityRole="button" style={{ paddingVertical: 7 }}>
+                        <Text style={{ color: c.ink, fontSize: 12, textAlign: rtl ? 'right' : 'left' }} numberOfLines={1}>
+                          {dateText(e.journal_date)}{e.title ? ` · ${e.title}` : ''}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                ) : null}
               </View>
             );
           })}

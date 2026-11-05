@@ -1,4 +1,5 @@
 import DialogHost from "./src/components/DialogHost";
+import MoodFace from './src/components/MoodFace';
 import { Dialog } from "./src/platform/dialog";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -64,6 +65,7 @@ import {
   calendarDateKey,
   calendarMonthLength,
   calendarWeekdayLabels,
+  weekStartFor,
   formatCalendarMonth,
   formatDateKey,
   getCalendarParts,
@@ -103,7 +105,15 @@ import AppearanceScreen from "./src/screens/AppearanceScreen";
 import PremiumScreen from "./src/screens/PremiumScreen";
 import PremiumPrompt from "./src/components/PremiumPrompt";
 import PremiumLocked from "./src/components/PremiumLocked";
+import MemoriesTeaser from "./src/components/MemoriesTeaser";
 import { PremiumContext, effectiveTheme } from "./src/premium";
+import { refreshWidgets } from "./src/platform/widgets";
+import StoriesRow from "./src/components/StoriesRow";
+import AccountScreen from "./src/screens/AccountScreen";
+import { AccountProvider, useAccount } from "./src/account/AccountContext";
+import { serverReady } from "./src/account/config";
+import StoryViewer from "./src/components/StoryViewer";
+import { buildStories } from "./src/utils/stories";
 import StorageScreen from "./src/screens/StorageScreen";
 import ReminderScreen from "./src/screens/ReminderScreen";
 import LockScreen from "./src/screens/LockScreen";
@@ -181,10 +191,12 @@ function AppShell() {
     getCalendarParts(dateKey(), "gregorian"),
   );
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [subScreen, setSubScreen] = useState(null); // null | "premium" | "appearance" | "trash" | "tags" | "backup" | "storage" | "reminders" | "lock"
+  const [subScreen, setSubScreen] = useState(null); // null | "premium" | "appearance" | "trash" | "tags" | "backup" | "storage" | "reminders" | "lock" | "account"
   const [trashCount, setTrashCount] = useState(0);
   const [ready, setReady] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const account = useAccount();
+  const [accountIntro, setAccountIntro] = useState(false); // one optional "log in" page right after the welcome pages
   const [theme, setTheme] = useState(DEFAULT_THEME);
   const [premium, setPremiumState] = useState(false);
   const [premiumAsk, setPremiumAsk] = useState(null); // feature key of the open "needs Premium" popup
@@ -206,6 +218,12 @@ function AppShell() {
     appearance === "dark" ||
     (appearance === "system" && systemScheme === "dark");
   const c = useMemo(() => buildPalette(effectiveTheme(theme, premium), dark), [theme, premium, dark]);
+
+  // Home-screen widgets follow language, calendar and theme.
+  useEffect(() => {
+    if (!ready) return;
+    refreshWidgets({ language, calendar: calendarType, theme, appearance, premium, systemDark: systemScheme === "dark" });
+  }, [ready, language, calendarType, theme, appearance, premium, systemScheme]);
   const isTablet = shortestSide >= 600;
   const isLandscapeTablet = isTablet && width > height;
   const contentWidth = Math.min(width - (isTablet ? 88 : 0), 1060);
@@ -459,7 +477,7 @@ function AppShell() {
       effectiveCalendar,
     );
     const first = parseDateKey(firstKey);
-    const weekStart = language === "fa" ? 6 : language === "tr" ? 1 : 0;
+    const weekStart = weekStartFor(language);
     const offset = (first.getDay() - weekStart + 7) % 7;
     const cells = [
       ...Array(offset).fill(null),
@@ -587,6 +605,19 @@ function AppShell() {
         onBack={() => setSubScreen(null)}
       />
     );
+  else if (settingsOpen && subScreen === "account")
+    content = (
+      <AccountScreen
+        db={db}
+        t={t}
+        c={c}
+        rtl={rtl}
+        language={language}
+        premium={premium}
+        num={numberFormatter(language)}
+        onBack={() => setSubScreen(null)}
+      />
+    );
   else if (settingsOpen && subScreen === "premium")
     content = (
       <PremiumScreen t={t} c={c} rtl={rtl} premium={premium} setPremium={setPremium} onBack={() => setSubScreen(null)} />
@@ -700,7 +731,7 @@ function AppShell() {
     );
   else if (tab === "memories" && !premium)
     content = (
-      <PremiumLocked title={t.memories} body={t.memoriesLockedBody} hint={t.memoriesLockedHint} t={t} c={c} rtl={rtl} />
+      <MemoriesTeaser t={t} c={c} rtl={rtl} />
     );
   else if (tab === "memories")
     content = (
@@ -794,7 +825,29 @@ function AppShell() {
           onFinish={() => {
             persistSetting("onboardingDone", true);
             setShowOnboarding(false);
+            if (!account.user && serverReady()) setAccountIntro(true);
           }}
+        />
+        {promptNode}
+      </View>
+      </PremiumContext.Provider>
+    );
+
+  if (accountIntro && !account.user)
+    return (
+      <PremiumContext.Provider value={premiumCtx}>
+      <View style={[styles.safeRoot, { backgroundColor: c.bg, paddingTop: insets.top, paddingHorizontal: 20 }]}>
+        <ExpoStatusBar style={dark ? "light" : "dark"} backgroundColor={c.bg} translucent={false} />
+        <AccountScreen
+          intro
+          db={db}
+          t={t}
+          c={c}
+          rtl={rtl}
+          language={language}
+          premium={premium}
+          num={numberFormatter(language)}
+          onDone={() => setAccountIntro(false)}
         />
         {promptNode}
       </View>
@@ -983,6 +1036,10 @@ function HomeScreen({
   onFavorite,
   isTablet,
 }) {
+  const stories = useMemo(() => buildStories(entries, today, calendar), [entries, today, calendar]);
+  const [storyGroup, setStoryGroup] = useState(null);
+  const db = useSQLiteContext();
+  const insets = useSafeAreaInsets();
   const todayLabel = formatDateKey(today, language, calendar, {
     weekday: "long",
     month: "long",
@@ -1010,7 +1067,7 @@ function HomeScreen({
           ]}
         >
           <Pop active={dailyMood === mood.key}>
-            <Text style={styles.moodEmoji}>{mood.face}</Text>
+            <MoodFace mood={mood.key} size={30} />
           </Pop>
           <Text
             numberOfLines={1}
@@ -1039,6 +1096,8 @@ function HomeScreen({
         ]}
       >
         <View style={styles.homeColumn}>
+          {!isSearching && <StoriesRow groups={stories} db={db} onOpen={setStoryGroup} t={t} c={c} rtl={rtl} />}
+          <StoryViewer group={storyGroup} db={db} onClose={() => setStoryGroup(null)} onOpenEntry={onEdit} t={t} c={c} rtl={rtl} language={language} calendar={calendar} insets={insets} />
           <Animated.View
             entering={fadeInDown(0)}
             style={[styles.welcomeRow, rtl && styles.rowReverse]}
@@ -1151,9 +1210,6 @@ function HomeScreen({
         <View style={styles.homeColumn}>
           <View style={[styles.recentHeading, rtl && styles.rowReverse]}>
             <View>
-              <Text style={[styles.eyebrow, { color: c.muted }]}>
-                {isSearching ? t.search : t.recent}
-              </Text>
               <Text style={[styles.recentTitle, { color: c.ink }]}>
                 {isSearching ? t.search : t.recent}
               </Text>
@@ -1262,7 +1318,6 @@ function CalendarScreen({
     language === "fa" ? "fa-IR" : language === "tr" ? "tr-TR" : "en-US";
   return (
     <ScrollView contentContainerStyle={styles.pageContent}>
-      <Text style={[styles.eyebrow, { color: c.muted }]}>{t.calendar}</Text>
       <Text style={[styles.pageTitle, { color: c.ink }]}>{t.calendar}</Text>
       <View
         style={[
@@ -1349,7 +1404,7 @@ function CalendarScreen({
                 </Text>
                 <View style={styles.dayMarks}>
                   {dayMood ? (
-                    <Text style={styles.dayMoodFace}>{dayMood.face}</Text>
+                    <MoodFace mood={dayMood.key} size={13} />
                   ) : null}
                   {hasEntry ? (
                     <View
@@ -1375,9 +1430,7 @@ function CalendarScreen({
         </Text>
         {dailyMoods[selectedDate] ? (
           <Text style={[styles.calendarNote, { color: c.sageDark, marginTop: 4 }]}>
-            {t.dailyMoodLabel}:{" "}
-            {MOODS.find((m) => m.key === dailyMoods[selectedDate])?.face}{" "}
-            {t[dailyMoods[selectedDate]]}
+            {t.dailyMoodLabel}: {t[dailyMoods[selectedDate]]}
           </Text>
         ) : null}
       </View>
@@ -1510,9 +1563,7 @@ function EntryList({
             <Pin size={14} color={c.sageDark} fill={c.sageDark} />
           ) : null}
           {entry.mood ? (
-            <Text style={styles.entryMood}>
-              {MOODS.find((mood) => mood.key === entry.mood)?.face}
-            </Text>
+            <MoodFace mood={entry.mood} size={22} />
           ) : null}
           <PressableScale
             scaleTo={0.8}
@@ -1543,7 +1594,9 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <SQLiteProvider databaseName="kitty-journal.db" onInit={runMigrations}>
-        <AppShell />
+        <AccountProvider>
+          <AppShell />
+        </AccountProvider>
       </SQLiteProvider>
     </SafeAreaProvider>
   );

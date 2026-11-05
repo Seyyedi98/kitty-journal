@@ -1,4 +1,5 @@
 import { Dialog } from '../platform/dialog';
+import MoodFace from './MoodFace';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   KeyboardAvoidingView,
@@ -41,7 +42,8 @@ import {
 import { importPhotos, attachmentUri, purgeEntryAndFiles, removeAttachmentAndFiles } from '../services/photos';
 import { deps } from '../platform/deps';
 import { pickPhotos } from '../platform/pickers';
-import { getCurrentPlace } from '../platform/location';
+import { getCurrentPlace, lookupPlace } from '../platform/location';
+import MapPickerModal from './MapPickerModal';
 import { useAutosave } from '../hooks/useAutosave';
 import { cleanTagName, countWords, readingMinutes, tagKey } from '../utils/text';
 import { cleanEmotions } from '../utils/emotions';
@@ -374,6 +376,24 @@ export default function EditorModal({
         },
       },
     ]);
+  };
+
+  const [mapOpen, setMapOpen] = useState(false);
+  const pickOnMap = async ({ latitude, longitude }) => {
+    setMapOpen(false);
+    setPlaceMessage('');
+    setPlace((prev) => ({ name: (prev && prev.name) || '', address: '', latitude, longitude }));
+    setLocating(true);
+    try {
+      const found = await runExternal(() => lookupPlace(latitude, longitude));
+      setPlace((prev) =>
+        prev && prev.latitude === latitude && prev.longitude === longitude
+          ? { ...prev, name: prev.name || found.name || '', address: found.address || '' }
+          : prev,
+      );
+    } finally {
+      setLocating(false);
+    }
   };
 
   const useCurrentLocation = async () => {
@@ -722,7 +742,7 @@ export default function EditorModal({
                       },
                     ]}
                   >
-                    <Text style={s.moodEmoji}>{item.face}</Text>
+                    <MoodFace mood={item.key} size={34} />
                     <Text style={[s.moodLabel, { color: selected && !dark ? '#38352F' : c.muted }]}>{t[item.key]}</Text>
                   </Pressable>
                 );
@@ -739,6 +759,7 @@ export default function EditorModal({
               value={place}
               onChange={setPlace}
               onUseCurrent={useCurrentLocation}
+              onPickMap={() => setMapOpen(true)}
               locating={locating}
               message={placeMessage}
               t={t}
@@ -746,6 +767,16 @@ export default function EditorModal({
               rtl={rtl}
             />
             </Section>
+            <MapPickerModal
+              visible={mapOpen}
+              initial={place && place.latitude != null && place.longitude != null ? { latitude: place.latitude, longitude: place.longitude } : null}
+              onConfirm={pickOnMap}
+              onCancel={() => setMapOpen(false)}
+              t={t}
+              c={c}
+              rtl={rtl}
+              insets={insets}
+            />
 
             {entry || entryIdRef.current ? (
               <Pressable onPress={confirmDelete} style={[s.deleteButton, { borderColor: c.danger }]} accessibilityRole="button">

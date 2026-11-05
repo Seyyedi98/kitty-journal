@@ -7,3 +7,5 @@ export async function getCurrentPositionAsync() {
   return { coords: window.__location.coords };
 }
 export async function reverseGeocodeAsync() { return [window.__location.place]; }
+export async function hasServicesEnabledAsync() { return true; }
+export async function getLastKnownPositionAsync() { return window.__location.fail ? null : { coords: window.__location.coords }; }
