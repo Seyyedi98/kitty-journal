@@ -14,6 +14,7 @@ import { canSaveToDevice, saveFileToDevice } from '../platform/saveToDevice';
 import { formatDateKey } from '../calendar';
 import { formatBytes, isoToDateKey, numberFormatter } from '../utils/format';
 import { fmt } from '../i18n';
+import CloudBackupCard from '../components/CloudBackupCard';
 
 /** Map a parse error code to an i18n string. */
 function parseErrorMsg(code, t) {
@@ -33,7 +34,7 @@ function parseErrorMsg(code, t) {
 const OVERDUE_DAYS = 30;
 
 /** Backup & restore. B1: export. B2a: pick + preview. B2b: apply. */
-export default function BackupScreen({ db, t, c, rtl, language, calendar, onBack, onChanged, runExternal = (fn) => fn() }) {
+export default function BackupScreen({ db, t, c, rtl, language, calendar, onBack, onChanged, onOpenAccount, runExternal = (fn) => fn() }) {
   const num = useMemo(() => numberFormatter(language), [language]);
   const [lastBackupAt, setLastBackupAt] = useState(null);
   const [busy, setBusy] = useState(null); // 'zip' | 'json' | 'restore' | null
@@ -195,6 +196,10 @@ export default function BackupScreen({ db, t, c, rtl, language, calendar, onBack
             <Text style={{ color: c.muted, fontSize: 11, marginTop: 3, textAlign: align }}>{fmt(t.backupOverdue, { n: num(daysSince) })}</Text>
           ) : null}
         </View>
+      </Animated.View>
+
+      <Animated.View entering={fadeInDown(40)}>
+        <CloudBackupCard db={db} t={t} c={c} rtl={rtl} language={language} num={num} onChanged={onChanged} onOpenAccount={onOpenAccount} />
       </Animated.View>
 
       <Animated.View entering={fadeInDown(70)}>

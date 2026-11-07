@@ -1,11 +1,13 @@
 import React from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Image, Pressable, StyleSheet, View } from 'react-native';
 import { Archive, Bell, Crown, UserRound, Palette, ChevronLeft, ChevronRight, Heart, HardDrive, Lock, Tag, Trash2 } from 'lucide-react-native';
 import { ScrollView, Text } from '../ui';
 import { Card, LinkRow, Segmented } from '../components/common';
 import { fmt } from '../i18n';
 import { usePremium } from '../premium';
 import { useAccount } from '../account/AccountContext';
+
+const PLUS_IMAGE = require('../../assets/images/plus-banner.png');
 
 const THEME_LABELS = { sage: 'themeSage', rose: 'themeRose', lavender: 'themeLavender', ocean: 'themeOcean', cozy: 'themeCozy', navy: 'themeNavy', vanilla: 'themeVanilla', professional: 'themeProfessional', summer: 'themeSummer', forest: 'themeForest', sunset: 'themeSunset' };
 
@@ -28,7 +30,6 @@ export default function SettingsScreen({
   dark,
   onOpen,
   premium = false,
-  setPremium = () => {},
   trashCount = 0,
   lockEnabled = false,
   num = String,
@@ -42,22 +43,26 @@ export default function SettingsScreen({
     <ScrollView contentContainerStyle={s.page}>
       <Text style={[s.title, { color: c.ink }]}>{t.settings}</Text>
 
-      <Card title={t.premiumPlan} c={c} rtl={rtl}>
-        <Segmented
-          c={c}
-          rtl={rtl}
-          value={premium ? 'premium' : 'free'}
-          onChange={(v) => setPremium(v === 'premium')}
-          options={[
-            { value: 'free', label: t.planFree },
-            { value: 'premium', label: t.planPremium },
-          ]}
-        />
-        <LinkRow icon={Crown} title={t.premiumIncluded} onPress={() => onOpen('premium')} trailing={chevron} c={c} rtl={rtl} last />
-      </Card>
+      {!premium ? (
+        <Pressable
+          onPress={() => onOpen('premium')}
+          accessibilityRole="button"
+          accessibilityLabel={`${t.bannerTitle}. ${t.bannerCta}`}
+          style={[s.banner, { backgroundColor: c.accentSoft, borderColor: c.line, flexDirection: rtl ? 'row-reverse' : 'row' }]}
+        >
+          <Image source={PLUS_IMAGE} style={s.bannerImg} resizeMode="contain" accessibilityIgnoresInvertColors />
+          <View style={{ flex: 1, gap: 2 }}>
+            <Text style={{ color: c.ink, fontSize: 15, fontWeight: '800', textAlign: align }}>{t.bannerTitle}</Text>
+            <Text numberOfLines={2} style={{ color: c.muted, fontSize: 12, lineHeight: 17, textAlign: align }}>{t.bannerText}</Text>
+            <View style={[s.bannerCta, { backgroundColor: c.accent, alignSelf: rtl ? 'flex-end' : 'flex-start' }]}>
+              <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>{t.bannerCta}</Text>
+            </View>
+          </View>
+        </Pressable>
+      ) : null}
 
       <Card c={c} rtl={rtl} style={{ gap: 0 }}>
-        <LinkRow icon={UserRound} title={t.account} subtitle={user ? fmt(t.accSignedInAs, { name: user.name }) : t.accRowHint} onPress={() => onOpen('account')} trailing={chevron} c={c} rtl={rtl} last />
+        <LinkRow icon={UserRound} title={t.account} subtitle={user ? fmt(t.accSignedInAs, { name: user.name || user.phone }) : t.accRowHint} onPress={() => onOpen('account')} trailing={chevron} c={c} rtl={rtl} last />
       </Card>
 
       <Card title={t.settingsGeneral} c={c} rtl={rtl}>
@@ -129,8 +134,11 @@ export default function SettingsScreen({
 }
 
 const s = StyleSheet.create({
-  page: { paddingTop: 25, paddingBottom: 120, gap: 2 },
+  page: { paddingTop: 25, paddingBottom: 24, gap: 2 },
   rowReverse: { flexDirection: 'row-reverse' },
+  banner: { borderWidth: 1, borderRadius: 18, paddingVertical: 10, paddingHorizontal: 12, gap: 12, alignItems: 'center', marginBottom: 10 },
+  bannerImg: { width: 64, height: 64 },
+  bannerCta: { marginTop: 6, paddingHorizontal: 12, paddingVertical: 5, borderRadius: 999 },
   label: { fontSize: 12, fontWeight: '700' },
   eyebrow: { fontSize: 10, letterSpacing: 1.6, fontWeight: '700', marginBottom: 9 },
   title: { fontSize: 29, fontWeight: '500', marginTop: -4, marginBottom: 6 },

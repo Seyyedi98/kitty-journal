@@ -111,7 +111,6 @@ import { refreshWidgets } from "./src/platform/widgets";
 import StoriesRow from "./src/components/StoriesRow";
 import AccountScreen from "./src/screens/AccountScreen";
 import { AccountProvider, useAccount } from "./src/account/AccountContext";
-import { serverReady } from "./src/account/config";
 import StoryViewer from "./src/components/StoryViewer";
 import { buildStories } from "./src/utils/stories";
 import StorageScreen from "./src/screens/StorageScreen";
@@ -196,9 +195,10 @@ function AppShell() {
   const [ready, setReady] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const account = useAccount();
-  const [accountIntro, setAccountIntro] = useState(false); // one optional "log in" page right after the welcome pages
+  const exitAsked = useRef(0);
   const [theme, setTheme] = useState(DEFAULT_THEME);
-  const [premium, setPremiumState] = useState(false);
+  // Premium comes only from the server (entitlement), and only for a signed-in user. The last known answer is kept for offline use.
+  const premium = Boolean(account.user) && account.premium === true;
   const [premiumAsk, setPremiumAsk] = useState(null); // feature key of the open "needs Premium" popup
   const [loadError, setLoadError] = useState(false);
   const [undo, setUndo] = useState(null);
@@ -269,7 +269,6 @@ function AppShell() {
         setCalendarType(cal);
         setAppearance(look);
         if (THEME_KEYS.includes(saved.theme)) setTheme(saved.theme);
-        setPremiumState(saved.premium === true);
         const effective =
           cal === "default" ? (lang === "fa" ? "solarHijri" : "gregorian") : cal;
         setCalendarMonth(getCalendarParts(dateKey(), effective));
@@ -410,10 +409,6 @@ function AppShell() {
         : value;
     setCalendarMonth(getCalendarParts(selectedDate, nextCalendar));
   };
-  const setPremium = (value) => {
-    setPremiumState(Boolean(value));
-    persistSetting("premium", Boolean(value));
-  };
   const changeTheme = (value) => {
     if (!THEME_KEYS.includes(value)) return;
     setTheme(value);
@@ -459,10 +454,19 @@ function AppShell() {
         setTab("home");
         return true;
       }
-      return false;
+      // Home: ask before leaving the app (a stray swipe should not close it).
+      // (A short time guard instead of a flag, so a dismissed dialog can never leave Back dead.)
+      if (Date.now() - exitAsked.current > 1000) {
+        exitAsked.current = Date.now();
+        Dialog.alert(t.exitAppTitle, t.exitAppMessage, [
+          { text: t.cancel, style: "cancel" },
+          { text: t.exitAppButton, style: "destructive", onPress: () => BackHandler.exitApp() },
+        ]);
+      }
+      return true;
     });
     return () => sub.remove();
-  }, [editorVisible, previewId, subScreen, settingsOpen, tab]);
+  }, [editorVisible, previewId, subScreen, settingsOpen, tab, t]);
 
   const calendarData = useMemo(() => {
     const monthLength = calendarMonthLength(
@@ -581,6 +585,7 @@ function AppShell() {
         calendar={effectiveCalendar}
         onBack={() => setSubScreen(null)}
         onChanged={refresh}
+        onOpenAccount={() => setSubScreen("account")}
       />
     );
   else if (settingsOpen && subScreen === "storage")
@@ -616,11 +621,12 @@ function AppShell() {
         premium={premium}
         num={numberFormatter(language)}
         onBack={() => setSubScreen(null)}
+        onOpenBackup={() => setSubScreen("backup")}
       />
     );
   else if (settingsOpen && subScreen === "premium")
     content = (
-      <PremiumScreen t={t} c={c} rtl={rtl} premium={premium} setPremium={setPremium} onBack={() => setSubScreen(null)} />
+      <PremiumScreen t={t} c={c} rtl={rtl} premium={premium} onBack={() => setSubScreen(null)} />
     );
   else if (settingsOpen && subScreen === "appearance")
     content = (
@@ -677,7 +683,6 @@ function AppShell() {
         dark={dark}
         onOpen={setSubScreen}
         premium={premium}
-        setPremium={setPremium}
         trashCount={trashCount}
         lockEnabled={lock.config.enabled}
         num={numberFormatter(language)}
@@ -825,29 +830,7 @@ function AppShell() {
           onFinish={() => {
             persistSetting("onboardingDone", true);
             setShowOnboarding(false);
-            if (!account.user && serverReady()) setAccountIntro(true);
           }}
-        />
-        {promptNode}
-      </View>
-      </PremiumContext.Provider>
-    );
-
-  if (accountIntro && !account.user)
-    return (
-      <PremiumContext.Provider value={premiumCtx}>
-      <View style={[styles.safeRoot, { backgroundColor: c.bg, paddingTop: insets.top, paddingHorizontal: 20 }]}>
-        <ExpoStatusBar style={dark ? "light" : "dark"} backgroundColor={c.bg} translucent={false} />
-        <AccountScreen
-          intro
-          db={db}
-          t={t}
-          c={c}
-          rtl={rtl}
-          language={language}
-          premium={premium}
-          num={numberFormatter(language)}
-          onDone={() => setAccountIntro(false)}
         />
         {promptNode}
       </View>

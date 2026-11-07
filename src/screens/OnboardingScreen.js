@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { BookOpen, Bell, Cloud, Heart, Lock, Sparkles } from 'lucide-react-native';
 import { ScrollView, Text } from '../ui';
+import { fmt } from '../i18n';
 import { Button, Note, Segmented } from '../components/common';
 import TimeStepper from '../components/TimeStepper';
 import { normalizeReminder } from '../services/reminders';
@@ -9,6 +10,10 @@ import { saveSetting } from '../db/repository';
 import { DEFAULT_REMINDER } from '../services/reminders';
 import { applyReminders, requestPermission } from '../platform/notifications';
 import { reminderText } from '../services/reminderSync';
+import AccountScreen from './AccountScreen';
+import { useAccount } from '../account/AccountContext';
+import { serverReady } from '../account/config';
+import { usePremium } from '../premium';
 
 const PAGES = 6;
 
@@ -18,6 +23,9 @@ export default function OnboardingScreen({
   runExternal = (fn) => fn(),
 }) {
   const [page, setPage] = useState(0);
+  const [showAccount, setShowAccount] = useState(false);
+  const { user } = useAccount();
+  const { premium } = usePremium();
   const [reminderMsg, setReminderMsg] = useState('');
   const [reminderOn, setReminderOn] = useState(false);
   const [rem, setRem] = useState(DEFAULT_REMINDER);
@@ -61,8 +69,26 @@ export default function OnboardingScreen({
   const titles = [t.welcomeTitle, t.onbCompanionTitle, t.onbPrivacyTitle, t.onbCloudTitle, t.onbReminderTitle, t.onbDoneTitle];
   const bodies = [t.welcomeBody, t.onbCompanionBody, t.onbPrivacyBody, t.onbCloudBody, t.onbReminderBody, t.onbDoneBody];
   // On the action pages the main button reads "Skip" until the action has been done.
-  const actionDone = [true, true, true, false, reminderOn, true][page];
+  const actionDone = [true, true, true, Boolean(user), reminderOn, true][page];
   const mainLabel = last ? t.getStarted : actionDone ? t.next : t.skip;
+
+  // The log-in form opens full screen from page 3 and returns to the next page when finished or skipped.
+  if (showAccount)
+    return (
+      <View style={[s.root, { backgroundColor: c.bg, paddingTop: insets.top + 16, paddingBottom: insets.bottom + 16 }]}>
+        <AccountScreen
+          intro
+          db={db}
+          t={t}
+          c={c}
+          rtl={rtl}
+          language={language}
+          premium={premium}
+          num={(n) => new Intl.NumberFormat(locale, { useGrouping: false }).format(n)}
+          onDone={() => { setShowAccount(false); setPage(4); }}
+        />
+      </View>
+    );
 
   return (
     <View style={[s.root, { backgroundColor: c.bg, paddingTop: insets.top + 16, paddingBottom: insets.bottom + 16 }]}>
@@ -91,7 +117,11 @@ export default function OnboardingScreen({
 
         {page === 3 ? (
           <View style={s.picker}>
-            <Button label={t.onbLogin} onPress={() => onLogin && onLogin()} c={c} rtl={rtl} variant="primary" />
+            {user ? (
+              <Note c={c} rtl={rtl} tone="ok">{fmt(t.accSignedInAs, { name: user.name || user.phone })}</Note>
+            ) : (
+              <Button label={t.onbLogin} onPress={() => (onLogin ? onLogin() : setShowAccount(true))} c={c} rtl={rtl} variant="primary" disabled={!serverReady()} />
+            )}
           </View>
         ) : null}
 

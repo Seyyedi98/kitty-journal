@@ -2,9 +2,12 @@
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 const load = async (p) => { const m = await import(p); return { ...(typeof m.default === 'object' && m.default ? m.default : {}), ...m }; };
-const { normalizePhone, normalizeCode, validateProfile } = await load('../src/account/validation.js');
+const { normalizePhone, normalizeCode, validateProfile, profileFromMe } = await load('../src/account/validation.js');
 const { createApi, createMockApi, ApiError } = await load('../src/account/api.js');
-const { exportTextSnapshot, importTextSnapshot, backupNow, restoreNow } = await load('../src/account/cloudBackup.js');
+const { createAuthed } = await load('../src/account/authed.js');
+const { formatAmount, normalizePlans, safePaymentUrl, orderOutcome } = await load('../src/account/purchase.js');
+const { daysLeft, premiumActive } = await load('../src/account/plan.js');
+const { exportTextSnapshot, importTextSnapshot, backupNow, restoreNow, wrapForServer, unwrapFromServer, stripBinary, BACKUP_FORMAT, backupLimitOf } = await load('../src/account/cloudBackup.js');
 const { phase2 } = await load('../src/i18n/phase2.js');
 const { fmt } = await load('../src/i18n/index.js').catch(() => ({ fmt: null }));
 
@@ -26,15 +29,27 @@ await test('phone normalisation', () => {
 await test('profile validation', () => {
   assert.ok(validateProfile({ name: '  Ramtin  ', age: '۳۲', gender: 'male' }).ok);
   assert.equal(validateProfile({ name: 'Ramtin', age: '32', gender: 'male' }).value.age, 32);
-  const bad = validateProfile({ name: 'R', age: '5', gender: 'x' });
+  assert.ok(!validateProfile({ name: 'R', age: '40', gender: 'prefer_not_to_say' }).ok); // only the genders in GENDERS (female, male)
+  assert.ok(validateProfile({ name: 'R', age: '12', gender: 'female' }).ok);
+  assert.ok(!validateProfile({ name: 'R', age: '11', gender: 'female' }).ok);
+  const bad = validateProfile({ name: ' ', age: '5', gender: 'x' });
   assert.deepEqual(Object.keys(bad.errors).sort(), ['age', 'gender', 'name']);
   assert.ok(!validateProfile({ name: 'Ab', age: '12.5', gender: 'female' }).ok);
-  assert.ok(!validateProfile({ name: 'Ab', age: '121', gender: 'female' }).ok);
+  assert.ok(!validateProfile({ name: 'Ab', age: '101', gender: 'female' }).ok);
+});
+await test('profileFromMe: reads a valid profile (flat or nested), otherwise null', () => {
+  assert.deepEqual(profileFromMe({ name: 'Ramtin', age: 32, gender: 'male', plan: 'free' }), { name: 'Ramtin', age: 32, gender: 'male' });
+  assert.deepEqual(profileFromMe({ profile: { name: 'Ab', age: '20', gender: 'female' } }), { name: 'Ab', age: 20, gender: 'female' });
+  assert.equal(profileFromMe({ user_id: 'u', phone: '+98***', plan: 'free', premium: false }), null);
+  assert.equal(profileFromMe(null), null);
+  assert.deepEqual(profileFromMe({ profile: { name: 'Sara', gender: 'female', age: 28, birth_year: 1998 } }), { name: 'Sara', age: 28, gender: 'female' });
+  assert.equal(profileFromMe({ profile: { name: 'Sam', gender: 'other', age: 28 } }), null); // old value: asks for details again
+  assert.equal(profileFromMe({ profile: {} }), null);
 });
 await test('i18n: same keys in en/fa/tr, account keys present, no duplicate keys', async () => {
   const k = (l) => Object.keys(phase2[l]).sort();
   assert.deepEqual(k('fa'), k('en')); assert.deepEqual(k('tr'), k('en'));
-  for (const key of ['account', 'accLogin', 'accErrServer', 'premium_cloudbackup', 'pf_cloudbackup', 'gender_unspecified']) assert.ok(phase2.en[key] && phase2.fa[key] && phase2.tr[key], key);
+  for (const key of ['account', 'accLogin', 'accErrServer', 'premium_cloudbackup', 'pf_cloudbackup', 'gender_prefer_not_to_say']) assert.ok(phase2.en[key] && phase2.fa[key] && phase2.tr[key], key);
   const fs = await import('node:fs');
   const src = fs.readFileSync(new URL('../src/i18n/phase2.js', import.meta.url), 'utf8');
   for (const l of ['en', 'fa', 'tr']) {
@@ -45,32 +60,85 @@ await test('i18n: same keys in en/fa/tr, account keys present, no duplicate keys
     assert.deepEqual(dup.filter((x) => x.startsWith('acc') || x.startsWith('gender_') || x === 'account'), [], l);
   }
 });
-await test('api: success, error mapping, timeout, network, auth header', async () => {
+await test('api: real routes, bodies, error mapping, timeout, auth header', async () => {
   const calls = [];
-  const mk = (res) => createApi({ baseUrl: 'https://x.test/v1/', fetchImpl: async (url, init) => { calls.push({ url, init }); return typeof res === 'function' ? res(url, init) : res; } });
-  const json = (status, body) => ({ ok: status < 400, status, json: async () => body });
-  const api = mk(json(200, { token: 't', user: { id: 1 }, plan: 'free' }));
-  assert.equal((await api.verifyCode('+98912', '123456', 'login')).token, 't');
-  assert.equal(calls[0].url, 'https://x.test/v1/auth/verify');
-  assert.equal(JSON.parse(calls[0].init.body).code, '123456');
-  await mk(json(200, {})).uploadBackup('tok', { entries: [] });
-  await assert.rejects(mk(json(402, {})).uploadBackup('t', {}), (e) => e instanceof ApiError && e.code === 'payment_required');
-  await assert.rejects(mk(json(401, {})).me('t'), (e) => e.code === 'unauthorized');
-  await assert.rejects(mk(json(429, {})).requestCode('p', 'login'), (e) => e.code === 'rate_limited');
-  await assert.rejects(mk(json(400, { error: 'invalid_code' })).verifyCode('p', 'c', 'login'), (e) => e.code === 'invalid_code');
+  const mk = (res) => createApi({ baseUrl: 'https://panjeh.ir/api/v1/', appId: 'kitty-journal', fetchImpl: async (url, init) => { calls.push({ url, init }); return typeof res === 'function' ? res(url, init) : res; } });
+  const json = (status, body, headers = {}) => ({ ok: status < 400, status, headers: { get: (k) => headers[k.toLowerCase()] ?? null }, json: async () => { if (body === undefined) throw new Error('empty'); return body; } });
+  const api = mk(json(202, { challenge_id: 'c1', expires_in: 300, resend_after: 60 }));
+  assert.equal((await api.requestCode('+989123456789')).challenge_id, 'c1');
+  assert.equal(calls[0].url, 'https://panjeh.ir/api/v1/auth/otp/request');
+  assert.deepEqual(JSON.parse(calls[0].init.body), { phone: '+989123456789', app_id: 'kitty-journal' });
+  await mk(json(200, { access_token: 'a', refresh_token: 'kjr_x', session_id: 's', user_id: 'u' })).verifyCode('c1', '123456', 'Android phone');
+  assert.equal(calls.at(-1).url, 'https://panjeh.ir/api/v1/auth/otp/verify');
+  assert.deepEqual(JSON.parse(calls.at(-1).init.body), { challenge_id: 'c1', code: '123456', device: 'Android phone' });
+  await mk(json(200, {})).refresh('kjr_old');
+  assert.equal(calls.at(-1).url, 'https://panjeh.ir/api/v1/auth/refresh');
+  await mk(json(200, {})).entitlement('tok');
+  assert.equal(calls.at(-1).url, 'https://panjeh.ir/api/v1/apps/kitty-journal/entitlement');
+  assert.equal(calls.at(-1).init.headers.Authorization, 'Bearer tok');
+  await mk(json(201, { id: 'b1' })).createBackup('tok', { label: 'L', backup: { version: 1 } });
+  assert.equal(calls.at(-1).url, 'https://panjeh.ir/api/v1/apps/kitty-journal/backups');
+  assert.deepEqual(JSON.parse(calls.at(-1).init.body), { label: 'L', backup: { version: 1 } });
+  await mk(json(200, {})).updateProfile('tok', { name: 'Ramtin', age: 32, gender: 'male' });
+  assert.equal(calls.at(-1).init.method, 'PATCH');
+  assert.equal(calls.at(-1).url, 'https://panjeh.ir/api/v1/me');
+  assert.deepEqual(JSON.parse(calls.at(-1).init.body), { name: 'Ramtin', gender: 'male', birth_year: new Date().getFullYear() - 32 });
+  await mk(json(204, undefined)).logout('tok'); // empty body is fine
+  await mk(json(200, {})).downloadBackup('tok', 'abc 1');
+  assert.ok(calls.at(-1).url.endsWith('/backups/abc%201'));
+  await assert.rejects(mk(json(402, {})).createBackup('t', {}), (e) => e.code === 'payment_required');
+  await assert.rejects(mk(json(403, { error: { code: 'premium_required' } })).createBackup('t', {}), (e) => e.code === 'payment_required' && e.serverCode === 'premium_required');
+  await assert.rejects(mk(json(401, { error: 'unauthorized' })).me('t'), (e) => e.code === 'unauthorized' && e.serverCode === 'unauthorized');
+  await assert.rejects(mk(json(429, {}, { 'retry-after': '17' })).requestCode('p'), (e) => e.code === 'rate_limited' && e.retryAfter === 17);
+  await assert.rejects(mk(json(400, { error: 'invalid_code' })).verifyCode('c', '000000'), (e) => e.code === 'invalid_code');
+  await assert.rejects(mk(json(401, {})).verifyCode('c', '000000'), (e) => e.code === 'invalid_code'); // wrong code must not read as "session ended"
+  await assert.rejects(mk(json(404, {})).downloadBackup('t', 'x'), (e) => e.code === 'not_found');
+  await assert.rejects(mk(json(413, {})).createBackup('t', {}), (e) => e.code === 'too_large');
+  await assert.rejects(mk(json(409, { error: { code: 'backup_limit', message: 'x' } })).createBackup('t', {}), (e) => e.code === 'limit_reached' && e.serverCode === 'backup_limit');
+  await assert.rejects(mk(json(400, { error: { code: 'invalid_backup', message: 'Unexpected backup format' } })).createBackup('t', {}), (e) => e.serverCode === 'invalid_backup' && e.message === 'Unexpected backup format');
   await assert.rejects(mk(json(500, null)).me('t'), (e) => e.code === 'server');
   await assert.rejects(mk(() => { throw new TypeError('net'); }).me('t'), (e) => e.code === 'network');
+  await assert.rejects(createApi({ baseUrl: 'http://panjeh.ir/api/v1', fetchImpl: async () => json(200, {}) }).me('t'), (e) => e.code === 'network'); // no plain http outside dev
   const slow = createApi({ baseUrl: 'https://x.test', timeoutMs: 20, fetchImpl: (u, init) => new Promise((_, rej) => init.signal.addEventListener('abort', () => rej(Object.assign(new Error('a'), { name: 'AbortError' })))) });
   await assert.rejects(slow.me('t'), (e) => e.code === 'timeout');
-  await mk(json(200, {})).me('secret');
-  assert.equal(calls.at(-1).init.headers.Authorization, 'Bearer secret');
 });
-await test('mock server: wrong code rejected, register then login', async () => {
+await test('mock server: wrong code rejected, backups list/create/download/delete', async () => {
   const api = createMockApi();
-  await assert.rejects(api.verifyCode('+98912', '000000', 'register', {}), (e) => e.code === 'invalid_code');
-  const r = await api.verifyCode('+98912', '123456', 'register', { name: 'A', age: 30, gender: 'male' });
-  assert.equal(r.user.name, 'A');
-  assert.equal((await api.verifyCode('+98912', '123456', 'login')).user.name, 'A');
+  const ch = await api.requestCode('+98912');
+  await assert.rejects(api.verifyCode(ch.challenge_id, '000000'), (e) => e.code === 'invalid_code');
+  const r = await api.verifyCode(ch.challenge_id, '123456');
+  assert.ok(r.access_token && r.refresh_token.startsWith('kjr_'));
+  const b = await api.createBackup(r.access_token, { label: 'x', backup: { version: 1, entries: [] } });
+  assert.equal((await api.listBackups(r.access_token)).backups.length, 1);
+  assert.deepEqual(await api.downloadBackup(r.access_token, b.id), { version: 1, entries: [] });
+  await api.deleteBackup(r.access_token, b.id);
+  assert.equal((await api.listBackups(r.access_token)).backups.length, 0);
+});
+await test('authed: refreshes once on 401 (shared), retries, ends login only on a definite refusal', async () => {
+  const mkSession = () => ({ access: 'old', refresh: 'kjr_old' });
+  let session = mkSession(); let ended = 0; let refreshCalls = 0;
+  const base = { getSession: () => session, applyTokens: async (t) => { session = { ...session, ...t }; }, endSession: async () => { ended++; session = null; } };
+  const api = { refresh: async (rt) => { refreshCalls++; await new Promise((r) => setTimeout(r, 10)); assert.equal(rt, 'kjr_old'); return { access_token: 'new', refresh_token: 'kjr_new' }; } };
+  const authed = createAuthed({ ...base, api });
+  const fn = async (tok) => { if (tok !== 'new') throw new ApiError('unauthorized'); return 'ok:' + tok; };
+  const [a, b] = await Promise.all([authed(fn), authed(fn)]);
+  assert.deepEqual([a, b], ['ok:new', 'ok:new']);
+  assert.equal(refreshCalls, 1, 'two parallel calls share one refresh');
+  assert.equal(session.refresh, 'kjr_new');
+  assert.equal(await authed(async () => 'fine'), 'fine');
+  // non-auth errors pass straight through, no refresh
+  await assert.rejects(authed(async () => { throw new ApiError('payment_required'); }), (e) => e.code === 'payment_required');
+  assert.equal(refreshCalls, 1);
+  // offline during refresh keeps the login
+  session = mkSession(); ended = 0;
+  const offline = createAuthed({ ...base, api: { refresh: async () => { throw new ApiError('network'); } } });
+  await assert.rejects(offline(async () => { throw new ApiError('unauthorized'); }), (e) => e.code === 'network');
+  assert.equal(ended, 0); assert.ok(session);
+  // refresh refused → signed out
+  const refused = createAuthed({ ...base, api: { refresh: async () => { throw new ApiError('unauthorized', '', { status: 401 }); } } });
+  await assert.rejects(refused(async () => { throw new ApiError('unauthorized'); }), (e) => e.code === 'unauthorized');
+  assert.equal(ended, 1); assert.equal(session, null);
+  await assert.rejects(authed(async () => 'x'), (e) => e.code === 'unauthorized'); // no session
 });
 
 function makeDb() {
@@ -125,14 +193,126 @@ await test('restore: rejects bad snapshots, skips junk entries, is atomic', asyn
   const r = await importTextSnapshot(db, { version: 1, entries: [{ uuid: 'nope' }, null, { uuid: U1, date: '2026-10-01', createdAt: '2026-10-01T00:00:00Z', updatedAt: '2026-10-01T00:00:00Z', title: 'ok' }] });
   assert.deepEqual(r, { added: 1, updated: 0, skipped: 2 });
 });
-await test('backupNow / restoreNow through the mock server', async () => {
-  const api = createMockApi();
+await test('server wrapper: exact format the server checks, text only, round trip', async () => {
+  const sent = [];
+  const api = { createBackup: async (tok, body) => { sent.push(body); return { id: 'b1', created_at: '2026-11-06T00:00:00Z' }; }, downloadBackup: async () => sent[0].backup };
+  const authed = async (fn) => fn('tok');
   const db = makeDb();
   add(db, U1, 'one', '2026-10-01', '2026-10-01T10:00:00.000Z');
-  await assert.rejects(restoreNow({ db, api, token: 'mock.+98' }), (e) => e.code === 'not_found');
-  const b = await backupNow({ db, api, token: 'mock.+98' });
-  assert.equal(b.count, 1);
+  db.raw.exec("UPDATE entries SET body_html='<p>hi</p><img src=\"data:image/png;base64,AAAA\"><p>x</p>' WHERE uuid='" + U1 + "'");
+  await backupNow({ db, api, authed, label: 'L' });
+  assert.deepEqual(Object.keys(sent[0]).sort(), ['backup', 'label']);
+  const b = sent[0].backup;
+  assert.equal(b.format, 'kitty-journal-json'); assert.equal(b.format, BACKUP_FORMAT);
+  assert.equal(b.formatVersion, 1); assert.equal(b.includesAttachmentFiles, false);
+  assert.equal(typeof b.data, 'object'); assert.equal(b.data.entries.length, 1);
+  assert.deepEqual(Object.keys(b).sort(), ['data', 'format', 'formatVersion', 'includesAttachmentFiles']);
+  assert.ok(!JSON.stringify(b).includes('base64'), 'no embedded binary');
+  assert.equal(b.data.entries[0].bodyHtml, '<p>hi</p><p>x</p>');
+  assert.ok(JSON.stringify(sent[0]).length < 2 * 1024 * 1024);
   const fresh = makeDb();
-  assert.equal((await restoreNow({ db: fresh, api, token: 'mock.+98' })).added, 1);
+  assert.equal((await restoreNow({ db: fresh, api, authed, id: 'b1' })).added, 1);
+  assert.equal(stripBinary('<p>a</p>data:image/png;base64,QQ=='), null);
+  assert.equal(stripBinary(null), null);
+  assert.deepEqual(unwrapFromServer({ version: 1, entries: [] }), { version: 1, entries: [] }); // old/unwrapped payloads still readable
 });
+await test('daysLeft: rounds up, never negative, null without end date', () => {
+  const now = Date.parse('2026-11-06T12:00:00Z');
+  assert.equal(daysLeft('2026-11-16T12:00:00Z', now), 10);
+  assert.equal(daysLeft('2026-11-16T13:00:00Z', now), 11);
+  assert.equal(daysLeft('2026-11-06T18:00:00Z', now), 1);
+  assert.equal(daysLeft('2026-11-01T00:00:00Z', now), 0);
+  assert.equal(daysLeft(null, now), null); assert.equal(daysLeft('nope', now), null);
+});
+await test('premiumActive: offline grace, end date, clock set back', () => {
+  const H = 3600000, D = 24 * H;
+  const t0 = Date.parse('2026-11-06T10:00:00Z');
+  const base = { premium: true, expiresAt: '2026-12-06T00:00:00Z', checkedAt: t0, lastSeenAt: t0 };
+  assert.equal(premiumActive(base, t0 + H), true, 'fresh check');
+  assert.equal(premiumActive(base, t0 + 2 * D), true, 'inside 3 days offline');
+  assert.equal(premiumActive(base, t0 + 3 * D + H), false, 'offline too long: paused until a check succeeds');
+  assert.equal(premiumActive(base, t0 + 3 * D - H), true);
+  assert.equal(premiumActive({ ...base, expiresAt: '2026-11-06T12:00:00Z' }, t0 + 3 * H), false, 'past the end date');
+  assert.equal(premiumActive({ ...base, expiresAt: null }, t0 + H), true, 'no end date');
+  assert.equal(premiumActive({ ...base, checkedAt: null }, t0 + H), false, 'never checked');
+  assert.equal(premiumActive({ ...base, premium: false }, t0 + H), false);
+  assert.equal(premiumActive({ ...base, premium: null }, t0 + H), false);
+  assert.equal(premiumActive(base, t0 - D), false, 'clock set back before the last check');
+  assert.equal(premiumActive({ ...base, lastSeenAt: t0 + 2 * D }, t0 + 1 * D), false, 'clock set back after the app had seen a later time');
+  assert.equal(premiumActive(base, t0 - 60000), true, 'small clock drift is tolerated');
+  assert.equal(premiumActive(base, t0 + 2 * D, 1), false, 'grace is configurable');
+});
+await test('backupLimitOf: number, object or unknown', () => {
+  assert.equal(backupLimitOf(5), 5); assert.equal(backupLimitOf('10'), 10);
+  assert.equal(backupLimitOf({ max_backups: 3, max_bytes: 1 }), 3);
+  assert.equal(backupLimitOf({ count: 7 }), 7);
+  assert.equal(backupLimitOf({ plan: 'free' }), null); assert.equal(backupLimitOf(null), null); assert.equal(backupLimitOf(0), null);
+});
+await test('backupNow / restoreNow through the mock server (with authed)', async () => {
+  const api = createMockApi();
+  const authed = async (fn) => fn('tok');
+  const db = makeDb();
+  add(db, U1, 'one', '2026-10-01', '2026-10-01T10:00:00.000Z');
+  const b = await backupNow({ db, api, authed, label: 'L' });
+  assert.equal(b.count, 1); assert.ok(b.id);
+  const fresh = makeDb();
+  assert.equal((await restoreNow({ db: fresh, api, authed, id: b.id })).added, 1);
+  await assert.rejects(restoreNow({ db: fresh, api, authed, id: 'missing' }), (e) => e.code === 'not_found');
+});
+await test('purchase: amounts, plans with discounts, payment url, order status', () => {
+  assert.equal(formatAmount(99000), '99,000');
+  assert.equal(formatAmount(1299000, 'fa'), '۱٬۲۹۹٬۰۰۰');
+  assert.equal(formatAmount(-5), '0');
+  const n = normalizePlans({
+    currency: 'IRT',
+    plans: [
+      { id: 'm', months: 1, price: 100000, final_price: 100000 },
+      { id: 'q', months: 3, price: 250000, final_price: 200000, discount: { percent: 20, label: 'Sale', ends_at: '2026-12-01T00:00:00Z' } },
+      { id: 'y', months: 12, price: 900000, final_price: '700000', badge: 'best_value' },
+      { id: 'bad-price', price: 'abc' },
+      { price: 5 },
+      { id: 'over', price: 1000, final_price: 5000 },
+    ],
+    code: { value: 'AB', valid: false, message: 'No' },
+  });
+  assert.deepEqual(n.plans.map((p) => p.id), ['m', 'q', 'y', 'over']);
+  assert.equal(n.plans[0].discounted, false);
+  assert.equal(n.plans[1].discounted, true); assert.equal(n.plans[1].percent, 20); assert.equal(n.plans[1].discountLabel, 'Sale');
+  assert.equal(n.plans[2].finalPrice, 700000); assert.equal(n.plans[2].percent, 22); // worked out for display only when the server sent no percent
+  assert.equal(n.plans[3].finalPrice, 1000, 'a final price above the price is ignored');
+  assert.equal(n.code.valid, false);
+  assert.equal(normalizePlans(null).plans.length, 0);
+  assert.equal(safePaymentUrl('https://gateway.zibal.ir/start/123'), 'https://gateway.zibal.ir/start/123');
+  assert.equal(safePaymentUrl('http://gateway.zibal.ir/start/1'), null);
+  assert.equal(safePaymentUrl('javascript:alert(1)'), null);
+  assert.equal(safePaymentUrl('nonsense'), null);
+  assert.equal(orderOutcome('paid'), 'paid'); assert.equal(orderOutcome('canceled'), 'cancelled'); assert.equal(orderOutcome('failed'), 'failed'); assert.equal(orderOutcome('whatever'), 'pending');
+});
+
+await test('purchase: routes (plans with code, checkout, order) and the mock flow', async () => {
+  const calls = [];
+  const json = (status, body) => ({ ok: status < 400, status, headers: { get: () => null }, json: async () => body });
+  const api = createApi({ baseUrl: 'https://panjeh.ir/api/v1', appId: 'kitty-journal', fetchImpl: async (url, init) => { calls.push({ url, init }); return json(200, {}); } });
+  await api.plans('tok');
+  assert.equal(calls.at(-1).url, 'https://panjeh.ir/api/v1/apps/kitty-journal/plans');
+  await api.plans('tok', 'A B');
+  assert.equal(calls.at(-1).url, 'https://panjeh.ir/api/v1/apps/kitty-journal/plans?code=A%20B');
+  await api.checkout('tok', { plan_id: 'm', code: 'X' });
+  assert.equal(calls.at(-1).init.method, 'POST'); assert.equal(calls.at(-1).url, 'https://panjeh.ir/api/v1/apps/kitty-journal/checkout');
+  assert.deepEqual(JSON.parse(calls.at(-1).init.body), { plan_id: 'm', code: 'X' });
+  await api.order('tok', 'o 1');
+  assert.equal(calls.at(-1).url, 'https://panjeh.ir/api/v1/apps/kitty-journal/orders/o%201');
+  const mock = createMockApi();
+  assert.equal(normalizePlans(await mock.plans('t')).plans.length, 3);
+  const withCode = normalizePlans(await mock.plans('t', 'KITTY20'));
+  assert.equal(withCode.code.valid, true); assert.ok(withCode.plans[0].discounted);
+  assert.equal(normalizePlans(await mock.plans('t', 'NOPE')).code.valid, false);
+  const o = await mock.checkout('t', { plan_id: 'monthly' });
+  assert.ok(safePaymentUrl(o.payment_url));
+  assert.equal((await mock.entitlement('t')).premium, false);
+  assert.equal((await mock.order('t', o.order_id)).status, 'pending');
+  assert.equal((await mock.order('t', o.order_id)).status, 'paid');
+  assert.equal((await mock.entitlement('t')).premium, true);
+});
+
 console.log(`\n${passed} passed`);

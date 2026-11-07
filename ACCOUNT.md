@@ -1,24 +1,19 @@
-# Accounts and cloud backup
+# Accounts and cloud backup: how the app uses your server
 
-Set `API_BASE_URL` in `src/account/config.js` when the server is live. Until then debug builds use a
-mock server (code `123456`); release builds hide sign-in.
+Config: `src/account/config.js` → `API_BASE_URL = 'https://panjeh.ir/api/v1'`, `APP_ID = 'kitty-journal'`.
+Empty URL in a debug build = built-in mock server (code 123456). Plain http is refused outside debug builds.
 
-All bodies are JSON. Errors: HTTP status, optional body `{ "error": "<code>", "message": "..." }`.
-Codes the app understands: `invalid_code`, `rate_limited` (429), `unauthorized` (401), `payment_required` (402/403), `not_found` (404).
+| App action | Route |
+|---|---|
+| Send code | `POST /auth/otp/request` `{phone, app_id}` → `{challenge_id, expires_in, resend_after}` |
+| Verify | `POST /auth/otp/verify` `{challenge_id, code, device}` → `{access_token, refresh_token, session_id, user_id}` |
+| Expired token (401) | `POST /auth/refresh` `{refresh_token}` → new pair (old refresh token is dead; the app keeps the new one) |
+| Log out | `POST /auth/logout` |
+| Premium status | `GET /apps/kitty-journal/entitlement` → `premium` (at start, after login, on return to the app at most every 10 min) |
+| Backups | `GET/POST /apps/kitty-journal/backups`, `GET/DELETE /apps/kitty-journal/backups/{id}` |
 
-| Call | Request | Response |
-|---|---|---|
-| `POST /auth/request-code` | `{ phone, mode: "login"\|"register", profile? }` (phone is E.164, `profile` = `{name, age, gender}` on register) | `{ sent: true }` — sends an SMS code. 404 on login if no such account. |
-| `POST /auth/verify` | `{ phone, code, mode, profile? }` | `{ token, user:{id,phone,name,age,gender}, plan:"free"\|"premium" }` |
-| `GET /me` (Bearer) | | `{ user, plan }` — called at app start; 401 signs the user out |
-| `POST /auth/logout` (Bearer) | | `{ ok: true }` |
-| `PUT /backup` (Bearer) | snapshot (below) | `{ updatedAt, count }` — **must return 402/403 unless the account is paid** |
-| `GET /backup` (Bearer) | | the last snapshot, or 404; also paid-only |
-
-`gender` is one of `female`, `male`, `other`, `unspecified`. Age is an integer 13–120.
-
-Snapshot: `{ version: 1, createdAt, entries: [{ uuid, title, body, bodyHtml, formatVersion, date, mood, favorite, pinned, createdAt, updatedAt, tags: [] }] }`
-Text only: no photos, places or files. Restore adds missing entries and updates ones whose `updatedAt` is newer; it never deletes.
-
-Server must: verify the SMS code (short expiry, rate limit per phone and IP), store the snapshot encrypted at rest,
-and enforce the paid check itself (the app's check is only for display).
+One flow for everyone: phone → code → (first time only) name, age, gender. "First time" = GET /me returns no complete `profile`.
+The app sends `PATCH /me {name, gender, birth_year}` (birth_year = this year − age) and reads `profile {name, gender, age}` back.
+Gender values: female, male, other, prefer_not_to_say. If the save fails (offline), the app keeps the profile and retries at the next start or return to the app.
+Backup body: `{ label, backup: { format: "kitty-journal-json", formatVersion: 1, includesAttachmentFiles: false, data: { version: 1, createdAt, entries: [...] } } }` (text only, no images; the server rejects anything else).
+Restore adds missing entries and updates older ones; it never deletes.

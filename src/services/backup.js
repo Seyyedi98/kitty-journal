@@ -714,6 +714,7 @@ export async function applyRestore(db, deps, parsed, mode) {
     let toInsert = data.entries;
     let localByUuid = new Map();
     const untrash = [];
+    const addPhotos = []; // merge: photos the backup has for entries that already exist here
 
     if (mode === 'replace') {
       // Fail closed: no safety copy, no replace.
@@ -731,8 +732,13 @@ export async function applyRestore(db, deps, parsed, mode) {
       localByUuid = new Map(rows.map((r) => [r.uuid, r.updated_at]));
       const localTrashed = new Set(rows.filter((r) => r.deleted_at).map((r) => r.uuid));
       toInsert = [];
+      const localAtt = new Set((await db.getAllAsync('SELECT uuid FROM attachments')).map((r) => r.uuid));
       for (const e of data.entries) {
         if (localByUuid.has(e.uuid)) {
+          // Same entry already here (for example restored earlier from the text-only cloud
+          // backup): keep its text, but add any photo it does not have yet.
+          const missing = e.attachments.filter((a) => !localAtt.has(a.uuid));
+          if (missing.length) addPhotos.push({ uuid: e.uuid, attachments: missing });
           // In the trash here but active in the file: bring it back (see below).
           if (localTrashed.has(e.uuid) && !e.deleted_at) {
             untrash.push(e.uuid);
@@ -754,6 +760,14 @@ export async function applyRestore(db, deps, parsed, mode) {
         const s = await stageAttachment(deps, parsed, a, written);
         staged.set(a.uuid, s);
         if (!s.ok) skippedPhotos.push({ entry: e.uuid, attachment: a.uuid, reason: s.reason });
+      }
+    }
+
+    for (const item of addPhotos) {
+      for (const a of item.attachments) {
+        const s = await stageAttachment(deps, parsed, a, written);
+        staged.set(a.uuid, s);
+        if (!s.ok) skippedPhotos.push({ entry: item.uuid, attachment: a.uuid, reason: s.reason });
       }
     }
 
@@ -788,6 +802,24 @@ export async function applyRestore(db, deps, parsed, mode) {
       for (const uuid of untrash) {
         await db.runAsync('UPDATE entries SET deleted_at = NULL, updated_at = ? WHERE uuid = ?', nowIso(), uuid);
         summary.entriesUntrashed += 1;
+      }
+      for (const item of addPhotos) {
+        const row = await db.getFirstAsync('SELECT id FROM entries WHERE uuid = ?', item.uuid);
+        if (!row) continue;
+        const last = await db.getFirstAsync('SELECT MAX(sort_order) AS m FROM attachments WHERE entry_id = ?', row.id);
+        let order = last && last.m != null ? last.m + 1 : 0;
+        for (const a of item.attachments) {
+          const st = staged.get(a.uuid);
+          if (!st || !st.ok) continue;
+          await db.runAsync(
+            `INSERT INTO attachments (uuid, entry_id, file_name, thumb_name, original_name, mime_type,
+                                      size_bytes, width, height, captured_at, status, sort_order, created_at)
+             VALUES (?,?,?,?,?,?,?,?,?,?,'ready',?,?)`,
+            a.uuid, row.id, `${a.uuid}.jpg`, st.thumb, a.original_name, 'image/jpeg', st.size,
+            a.width, a.height, a.captured_at, order++, a.created_at,
+          );
+          summary.photosAdded += 1;
+        }
       }
       for (const e of toInsert) {
         await insertEntryDeep(db, e, staged);

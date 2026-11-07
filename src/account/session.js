@@ -1,14 +1,14 @@
 // The login session lives in the device's secure store (Android Keystore), never in the journal database.
 import * as SecureStore from 'expo-secure-store';
 
-const KEY = 'kj.account.v1';
+const KEY = 'kj.account.v2';
 
 export async function loadSession() {
   try {
     const raw = await SecureStore.getItemAsync(KEY);
     if (!raw) return null;
     const s = JSON.parse(raw);
-    return s && s.token && s.user ? s : null;
+    return s && s.refresh && s.userId ? s : null;
   } catch {
     return null;
   }

@@ -30,9 +30,17 @@ export const normalizeCode = (input) => asciiDigits(input).replace(/\D/g, '');
 export function validateProfile({ name, age, gender }) {
   const errors = {};
   const n = String(name ?? '').trim().replace(/\s+/g, ' ');
-  if (n.length < 2 || n.length > 60) errors.name = 'accErrName';
+  if (n.length < 1 || n.length > 60) errors.name = 'accErrName';
   const a = Number(asciiDigits(age));
+  const g = gender === 'unspecified' ? 'prefer_not_to_say' : gender; // older saved profiles
   if (!Number.isInteger(a) || a < MIN_AGE || a > MAX_AGE) errors.age = 'accErrAge';
-  if (!GENDERS.includes(gender)) errors.gender = 'accErrGender';
-  return { ok: Object.keys(errors).length === 0, errors, value: { name: n, age: a, gender } };
+  if (!GENDERS.includes(g)) errors.gender = 'accErrGender';
+  return { ok: Object.keys(errors).length === 0, errors, value: { name: n, age: a, gender: g } };
+}
+
+/** The server may (now or later) return the profile on GET /me, either nested or flat. Returns a valid profile or null. */
+export function profileFromMe(me) {
+  const p = (me && (me.profile || me)) || {};
+  const v = validateProfile({ name: p.name, age: p.age, gender: p.gender });
+  return v.ok ? v.value : null;
 }

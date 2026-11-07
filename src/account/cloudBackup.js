@@ -1,6 +1,17 @@
 // Text-only cloud backup: titles, text, dates, mood, favourite/pinned, tags. No photos, places or files.
 // Restore only ADDS or UPDATES entries (matched by uuid); it never deletes anything on the phone.
 export const SNAPSHOT_VERSION = 1;
+// The server accepts only this wrapper: { format: 'kitty-journal-json', formatVersion, includesAttachmentFiles: false, data: {...} }.
+export const BACKUP_FORMAT = 'kitty-journal-json';
+export const wrapForServer = (data) => ({ format: BACKUP_FORMAT, formatVersion: 1, includesAttachmentFiles: false, data });
+export const unwrapFromServer = (payload) => (payload && payload.format === BACKUP_FORMAT && payload.data ? payload.data : payload);
+
+// The server refuses embedded binary (data: images). Backups are text only, so images are dropped from the HTML.
+export const stripBinary = (html) => {
+  if (!html) return null;
+  const out = String(html).replace(/<img\b[^>]*>/gi, '');
+  return /data:[a-z]+\/[a-z0-9.+-]+;base64/i.test(out) ? null : out;
+};
 
 export async function exportTextSnapshot(db, now = new Date()) {
   const rows = await db.getAllAsync(
@@ -16,7 +27,7 @@ export async function exportTextSnapshot(db, now = new Date()) {
     version: SNAPSHOT_VERSION,
     createdAt: now.toISOString(),
     entries: rows.map((r) => ({
-      uuid: r.uuid, title: r.title || '', body: r.body || '', bodyHtml: r.body_html || null,
+      uuid: r.uuid, title: r.title || '', body: r.body || '', bodyHtml: stripBinary(r.body_html),
       formatVersion: r.content_format_version || 1, date: r.journal_date, mood: r.mood || null,
       favorite: r.favorite ? 1 : 0, pinned: r.pinned ? 1 : 0, createdAt: r.created_at, updatedAt: r.updated_at,
       tags: tagsBy.get(r.id) || [],
@@ -64,13 +75,24 @@ export async function importTextSnapshot(db, snapshot) {
   return { added, updated, skipped };
 }
 
-export async function backupNow({ db, api, token }) {
+/** authed(fn) runs fn(accessToken) and refreshes the login once if the token has expired. */
+export async function backupNow({ db, api, authed, label }) {
   const snapshot = await exportTextSnapshot(db);
-  const res = await api.uploadBackup(token, snapshot);
-  return { count: snapshot.entries.length, at: (res && res.updatedAt) || snapshot.createdAt };
+  const res = await authed((token) => api.createBackup(token, { label, backup: wrapForServer(snapshot) }));
+  return { count: snapshot.entries.length, at: (res && (res.created_at || res.createdAt)) || snapshot.createdAt, id: res && res.id };
 }
 
-export async function restoreNow({ db, api, token }) {
-  const snapshot = await api.downloadBackup(token);
-  return importTextSnapshot(db, snapshot);
+export async function restoreNow({ db, api, authed, id }) {
+  const payload = await authed((token) => api.downloadBackup(token, id));
+  return importTextSnapshot(db, unwrapFromServer(payload));
+}
+
+/** The server's `limit` may be a number or an object; returns how many cloud backups are allowed, or null if unknown. */
+export function backupLimitOf(limit) {
+  const pick = (v) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : null);
+  if (limit && typeof limit === 'object') {
+    for (const k of ['max_backups', 'max_count', 'count', 'max', 'backups']) if (pick(limit[k]) != null) return pick(limit[k]);
+    return null;
+  }
+  return pick(limit);
 }

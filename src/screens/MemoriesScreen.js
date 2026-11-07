@@ -1,6 +1,6 @@
 import { Dialog } from '../platform/dialog';
 import React, { useEffect, useMemo, useState } from 'react';
-import { Image, Linking, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { FlatList, Image, Linking, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { ImageOff, Image as ImageIcon, Map as MapIcon, MapPin, Pencil } from 'lucide-react-native';
 import { ScrollView, Text } from '../ui';
 import { Animated, PressableScale, stagger, zoomIn } from '../motion';
@@ -25,7 +25,7 @@ function Cell({ photo, size, onPress, c, index }) {
   const [broken, setBroken] = useState(false);
   return (
     <PressableScale
-      entering={zoomIn(stagger(index, 30, 12))}
+      entering={index < 18 ? zoomIn(stagger(index, 30, 12)) : undefined}
       scaleTo={0.94}
       onPress={onPress}
       accessibilityRole="imagebutton"
@@ -188,8 +188,88 @@ export default function MemoriesScreen({ db, t, c, rtl, language, calendar, refr
     ['places', t.memoriesPlaces, MapPin],
   ];
 
-  return (
-    <ScrollView contentContainerStyle={s.page}>
+  const rows = useMemo(() => {
+    const out = [];
+    const list = photos || [];
+    for (let i = 0; i < list.length; i += cols) out.push(list.slice(i, i + cols));
+    return out;
+  }, [photos, cols]);
+  const viewerPhotos = useMemo(
+    () => (photos || []).map((p) => ({
+      id: p.id,
+      uri: attachmentUri(fs, p.file_name),
+      title: p.entry_title || '',
+      subtitle: dateText(p.journal_date),
+      entryId: p.entry_id,
+    })),
+    [photos, language, calendar], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
+  const renderPhotoRow = ({ item: row, index: r }) => (
+    <View style={[s.photoRow, { gap: GAP }, rtl && s.rowReverse]}>
+      {row.map((p, j) => (
+        <Cell key={p.id} photo={p} size={size} c={c} index={r * cols + j} onPress={() => setViewer(r * cols + j)} />
+      ))}
+    </View>
+  );
+  const renderPlace = ({ item: p }) => {
+            const hasCoords = p.latitude != null && p.longitude != null;
+            const many = p.entries.length > 1;
+            const open = !!expanded[p.key];
+            const latest = p.entries[0];
+            return (
+              <View key={p.key} style={[s.placeCard, { backgroundColor: c.card, borderColor: c.line }]}>
+                <View style={[s.placeTop, rtl && s.rowReverse]}>
+                  <View style={[s.pin, { backgroundColor: c.sage }]}>
+                    <MapPin size={16} color={c.sageDark} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: p.name || p.address ? c.ink : c.muted, fontSize: 14, fontWeight: '600', textAlign: rtl ? 'right' : 'left' }}>
+                      {p.name || p.address || t.placeUnnamed}
+                    </Text>
+                    <Text style={{ color: c.muted, fontSize: 10, marginTop: 3, textAlign: rtl ? 'right' : 'left' }}>
+                      {many
+                        ? `${fmt(t.entriesCount, { n: num(p.entries.length) })} · ${dateText(latest.journal_date)}`
+                        : `${dateText(latest.journal_date)}${latest.title ? ` · ${latest.title}` : ''}`}
+                    </Text>
+                    {p.name && p.address ? (
+                      <Text style={{ color: c.muted, fontSize: 10, marginTop: 2, textAlign: rtl ? 'right' : 'left' }}>{p.address}</Text>
+                    ) : null}
+                  </View>
+                </View>
+                <View style={[s.placeActions, rtl && s.rowReverse]}>
+                  {nameButton(p.entries.map((e) => e.location_id), p.name, many ? fmt(t.entriesCount, { n: num(p.entries.length) }) : latest.title || dateText(latest.journal_date))}
+                  <Pressable
+                    onPress={() => (many ? setExpanded((x) => ({ ...x, [p.key]: !x[p.key] })) : onOpenEntry(latest.entry_id))}
+                    accessibilityRole="button"
+                    style={[s.pill, { borderColor: c.line }]}
+                  >
+                    <Text style={{ color: c.ink, fontSize: 11, fontWeight: '600' }}>{many ? (open ? t.hideEntries : t.showEntries) : t.viewEntry}</Text>
+                  </Pressable>
+                  {hasCoords ? (
+                    <Pressable onPress={() => openMaps(p)} accessibilityRole="button" style={[s.pill, { borderColor: c.sageDark, backgroundColor: c.accentSoft }]}>
+                      <Text style={{ color: c.sageDark, fontSize: 11, fontWeight: '700' }}>{t.openInMaps}</Text>
+                    </Pressable>
+                  ) : null}
+                </View>
+                {many && open ? (
+                  <View style={{ gap: 2, marginTop: 4 }}>
+                    {p.entries.map((e) => (
+                      <Pressable key={e.location_id} onPress={() => onOpenEntry(e.entry_id)} accessibilityRole="button" style={{ paddingVertical: 7 }}>
+                        <Text style={{ color: c.ink, fontSize: 12, textAlign: rtl ? 'right' : 'left' }} numberOfLines={1}>
+                          {dateText(e.journal_date)}{e.title ? ` · ${e.title}` : ''}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                ) : null}
+              </View>
+            );
+  };
+
+  // Only the rows on screen are drawn (a list of rows / place cards), so thousands of photos open fast and use little memory.
+  const header = (
+    <View style={{ gap: 14 }}>
       <Text style={[s.title, { color: c.ink }]}>{t.memories}</Text>
 
       <View style={[s.tabs, { backgroundColor: c.card, borderColor: c.line }, rtl && s.rowReverse]}>
@@ -216,16 +296,9 @@ export default function MemoriesScreen({ db, t, c, rtl, language, calendar, refr
         ) : photos.length === 0 ? (
           <EmptyState c={c} title={t.noPhotos} hint={t.noPhotosHint} icon={ImageIcon} />
         ) : (
-          <>
-            <Text style={{ color: c.muted, fontSize: 11, textAlign: rtl ? 'right' : 'left' }}>
-              {fmt(t.photoCount, { n: num(photos.length) })}
-            </Text>
-            <View style={[s.grid, { gap: GAP }, rtl && s.rowReverse]}>
-              {photos.map((p, i) => (
-                <Cell key={p.id} photo={p} size={size} c={c} index={i} onPress={() => setViewer(i)} />
-              ))}
-            </View>
-          </>
+          <Text style={{ color: c.muted, fontSize: 11, textAlign: rtl ? 'right' : 'left' }}>
+            {fmt(t.photoCount, { n: num(photos.length) })}
+          </Text>
         )
       ) : tab === 'map' ? (
         places === null ? (
@@ -306,68 +379,31 @@ export default function MemoriesScreen({ db, t, c, rtl, language, calendar, refr
       ) : places.length === 0 ? (
         <EmptyState c={c} title={t.noPlaces} hint={t.noPlacesHint} icon={MapPin} />
       ) : (
-        <>
           <Text style={{ color: c.muted, fontSize: 10, lineHeight: 15, textAlign: rtl ? 'right' : 'left' }}>{t.placesNote}</Text>
-          {listItems.map((p) => {
-            const hasCoords = p.latitude != null && p.longitude != null;
-            const many = p.entries.length > 1;
-            const open = !!expanded[p.key];
-            const latest = p.entries[0];
-            return (
-              <View key={p.key} style={[s.placeCard, { backgroundColor: c.card, borderColor: c.line }]}>
-                <View style={[s.placeTop, rtl && s.rowReverse]}>
-                  <View style={[s.pin, { backgroundColor: c.sage }]}>
-                    <MapPin size={16} color={c.sageDark} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ color: p.name || p.address ? c.ink : c.muted, fontSize: 14, fontWeight: '600', textAlign: rtl ? 'right' : 'left' }}>
-                      {p.name || p.address || t.placeUnnamed}
-                    </Text>
-                    <Text style={{ color: c.muted, fontSize: 10, marginTop: 3, textAlign: rtl ? 'right' : 'left' }}>
-                      {many
-                        ? `${fmt(t.entriesCount, { n: num(p.entries.length) })} · ${dateText(latest.journal_date)}`
-                        : `${dateText(latest.journal_date)}${latest.title ? ` · ${latest.title}` : ''}`}
-                    </Text>
-                    {p.name && p.address ? (
-                      <Text style={{ color: c.muted, fontSize: 10, marginTop: 2, textAlign: rtl ? 'right' : 'left' }}>{p.address}</Text>
-                    ) : null}
-                  </View>
-                </View>
-                <View style={[s.placeActions, rtl && s.rowReverse]}>
-                  {nameButton(p.entries.map((e) => e.location_id), p.name, many ? fmt(t.entriesCount, { n: num(p.entries.length) }) : latest.title || dateText(latest.journal_date))}
-                  <Pressable
-                    onPress={() => (many ? setExpanded((x) => ({ ...x, [p.key]: !x[p.key] })) : onOpenEntry(latest.entry_id))}
-                    accessibilityRole="button"
-                    style={[s.pill, { borderColor: c.line }]}
-                  >
-                    <Text style={{ color: c.ink, fontSize: 11, fontWeight: '600' }}>{many ? (open ? t.hideEntries : t.showEntries) : t.viewEntry}</Text>
-                  </Pressable>
-                  {hasCoords ? (
-                    <Pressable onPress={() => openMaps(p)} accessibilityRole="button" style={[s.pill, { borderColor: c.sageDark, backgroundColor: c.accentSoft }]}>
-                      <Text style={{ color: c.sageDark, fontSize: 11, fontWeight: '700' }}>{t.openInMaps}</Text>
-                    </Pressable>
-                  ) : null}
-                </View>
-                {many && open ? (
-                  <View style={{ gap: 2, marginTop: 4 }}>
-                    {p.entries.map((e) => (
-                      <Pressable key={e.location_id} onPress={() => onOpenEntry(e.entry_id)} accessibilityRole="button" style={{ paddingVertical: 7 }}>
-                        <Text style={{ color: c.ink, fontSize: 12, textAlign: rtl ? 'right' : 'left' }} numberOfLines={1}>
-                          {dateText(e.journal_date)}{e.title ? ` · ${e.title}` : ''}
-                        </Text>
-                      </Pressable>
-                    ))}
-                  </View>
-                ) : null}
-              </View>
-            );
-          })}
-        </>
       )}
+    </View>
+  );
 
-      {notice ? (
+  return (
+    <>
+      <FlatList
+        key={tab}
+        renderScrollComponent={(scrollProps) => <ScrollView {...scrollProps} />}
+        contentContainerStyle={s.page}
+        data={tab === 'photos' ? rows : tab === 'places' && places !== null ? listItems : []}
+        keyExtractor={(item, i) => (tab === 'photos' ? `r${item[0] ? item[0].id : i}` : item.key)}
+        renderItem={tab === 'photos' ? renderPhotoRow : renderPlace}
+        ItemSeparatorComponent={tab === 'places' ? Gap14 : Gap4}
+        ListHeaderComponent={header}
+        ListFooterComponent={notice ? (
         <Text accessibilityLiveRegion="polite" style={{ color: c.sageDark, fontSize: 11, textAlign: rtl ? 'right' : 'left' }}>{notice}</Text>
-      ) : null}
+
+        ) : null}
+        extraData={[expanded, c, language, calendar, rtl, size, t, tab]}
+        initialNumToRender={8}
+        maxToRenderPerBatch={6}
+        windowSize={7}
+      />
       <RenamePlaceModal
         visible={naming !== null}
         initialName={naming ? naming.name : ''}
@@ -380,13 +416,7 @@ export default function MemoriesScreen({ db, t, c, rtl, language, calendar, refr
       />
       <PhotoViewer
         visible={viewer !== null}
-        photos={(photos || []).map((p) => ({
-          id: p.id,
-          uri: attachmentUri(fs, p.file_name),
-          title: p.entry_title || '',
-          subtitle: dateText(p.journal_date),
-          entryId: p.entry_id,
-        }))}
+        photos={viewerPhotos}
         index={viewer ?? 0}
         onClose={() => setViewer(null)}
         onOpenEntry={(p) => {
@@ -397,9 +427,12 @@ export default function MemoriesScreen({ db, t, c, rtl, language, calendar, refr
         insets={insets}
         num={num}
       />
-    </ScrollView>
+    </>
   );
 }
+
+const Gap4 = () => <View style={{ height: GAP }} />;
+const Gap14 = () => <View style={{ height: 14 }} />;
 
 const s = StyleSheet.create({
   page: { paddingTop: 25, paddingBottom: 110, gap: 14 },
@@ -408,7 +441,7 @@ const s = StyleSheet.create({
   title: { fontSize: 29, fontWeight: '500', marginTop: -4, marginBottom: 6 },
   tabs: { flexDirection: 'row', alignItems: 'center', gap: 5, borderWidth: 1, borderRadius: 13, padding: 5 },
   tab: { flex: 1, minHeight: 40, borderRadius: 9, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 },
-  grid: { flexDirection: 'row', flexWrap: 'wrap' },
+  photoRow: { flexDirection: 'row' },
   placeCard: { borderWidth: 1, borderRadius: 14, padding: 13, gap: 12 },
   placeTop: { flexDirection: 'row', gap: 12, alignItems: 'flex-start' },
   pin: { width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
