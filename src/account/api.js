@@ -1,5 +1,5 @@
 // All network calls. Server routes: /auth/otp/request, /auth/otp/verify, /auth/refresh, /auth/logout, /me,
-// /apps/{appId}/entitlement, /apps/{appId}/backups[/{id}], /apps/{appId}/plans, /apps/{appId}/checkout, /apps/{appId}/orders/{id}.
+// /apps/{appId}/entitlement, /apps/{appId}/backups[/{id}], /apps/{appId}/plans, /apps/{appId}/discounts/check, /apps/{appId}/purchases[/{id}].
 import { API_BASE_URL, APP_ID } from './server';
 import { MOCK_CODE, REQUEST_TIMEOUT_MS, baseUrlAllowed, useMock } from './config';
 
@@ -50,9 +50,14 @@ export function createApi({ baseUrl = API_BASE_URL, appId = APP_ID, fetchImpl, t
       if (timer) clearTimeout(timer);
     }
     let data = null;
-    try { data = await res.json(); } catch { data = null; }
+    let raw = '';
+    if (typeof res.text === 'function') {
+      try { raw = await res.text(); data = raw ? JSON.parse(raw) : null; } catch { data = null; }
+    } else {
+      try { data = await res.json(); } catch { data = null; }
+    }
     // Debug builds only: shows in the Metro terminal exactly what was sent and what the server answered.
-    if (typeof __DEV__ !== 'undefined' && __DEV__ === true && typeof console !== 'undefined') console.log('[kitty-api]', method, base + path, body && body.phone ? 'phone=' + body.phone : '', '->', res.status, serverCodeOf(data) || '', res.url && res.url !== base + path ? 'REDIRECTED to ' + res.url : '', data && data.resend_after ? 'resend_after=' + data.resend_after : '', !res.ok ? 'message=' + (messageOf(data) || '') : '');
+    if (typeof __DEV__ !== 'undefined' && __DEV__ === true && typeof console !== 'undefined') console.log('[kitty-api]', method, base + path, body && body.phone ? 'phone=' + body.phone : '', '->', res.status, serverCodeOf(data) || '', res.url && res.url !== base + path ? 'REDIRECTED to ' + res.url : '', data && data.resend_after ? 'resend_after=' + data.resend_after : '', !res.ok ? 'message=' + (messageOf(data) || '') : '', !res.ok && !data && raw ? 'body=' + raw.replace(/\s+/g, ' ').slice(0, 200) : '');
     if (!res.ok) {
       const ra = Number(res.headers && res.headers.get ? res.headers.get('retry-after') : 0) || null;
       throw new ApiError(codeForStatus(res.status, ctx), messageOf(data), { status: res.status, serverCode: serverCodeOf(data), retryAfter: ra });
@@ -77,12 +82,14 @@ export function createApi({ baseUrl = API_BASE_URL, appId = APP_ID, fetchImpl, t
     updateProfile: (token, profile) => call('PATCH', '/me', { token, body: { name: profile.name, gender: profile.gender, birth_year: new Date().getFullYear() - profile.age } }),
     /** → { plan, premium, source, expires_at } */
     entitlement: (token) => call('GET', `${appPath}/entitlement`, { token }),
-    /** → { currency, plans: [{ id, price, final_price, discount?, ... }], code?, notice? }. `code` = a discount code to price with. */
-    plans: (token, code) => call('GET', `${appPath}/plans${code ? `?code=${encodeURIComponent(code)}` : ''}`, { token }),
-    /** body: { plan_id, code? } → 201 { order_id, payment_url, amount, currency }. The server asks Zibal for the payment page. */
-    checkout: (token, body) => call('POST', `${appPath}/checkout`, { token, body }),
-    /** → { order_id, status: pending | paid | failed | cancelled | expired } */
-    order: (token, id) => call('GET', `${appPath}/orders/${encodeURIComponent(id)}`, { token }),
+    /** No sign-in. → { currency: 'toman', plans: [{ id, plan, title: { en, tr, fa }, price, currency, duration_days }] } */
+    plans: () => call('GET', `${appPath}/plans`),
+    /** Price with a discount code. → { price, discount, amount, currency }. A bad code is 400 `invalid_code` with a readable message. */
+    checkDiscount: (token, productId, code) => call('POST', `${appPath}/discounts/check`, { token, body: { product_id: productId, code } }),
+    /** Start a purchase. → 201 { payment_id, status: 'pending', amount, pay_url }  or, when a code made it free, { payment_id, status: 'paid', amount: 0, expires_at } */
+    startPurchase: (token, body) => call('POST', `${appPath}/purchases`, { token, body }),
+    /** → { payment_id, status: pending | paid | failed | review, plan, amount, expires_at } */
+    purchaseStatus: (token, id) => call('GET', `${appPath}/purchases/${encodeURIComponent(id)}`, { token }),
     /** → { backups: [...], plan, limit } */
     listBackups: (token) => call('GET', `${appPath}/backups`, { token }),
     /** body: { label?, backup } */
@@ -112,22 +119,31 @@ export function createMockApi() {
     me: async () => wait({ user_id: 'u', plan: 'free', premium: false }),
     updateProfile: async () => wait(null),
     entitlement: async () => wait(paid ? { plan: 'premium', premium: true, source: 'mock', expires_at: new Date(Date.now() + 30 * 86400000).toISOString() } : { plan: 'free', premium: false, source: 'mock', expires_at: null }),
-    plans: async (t, code) => {
-      const ok = code === 'KITTY20';
-      const cut = (p) => Math.round(p * (ok ? 0.8 : 1));
-      return wait({
-        currency: 'IRT',
-        plans: [
-          { id: 'monthly', months: 1, price: 99000, final_price: cut(99000), discount: ok ? { percent: 20, label: 'KITTY20' } : null },
-          { id: 'quarterly', months: 3, price: 249000, final_price: cut(199000), discount: { percent: 20, label: 'Autumn sale', ends_at: new Date(Date.now() + 3 * 86400000).toISOString() } },
-          { id: 'yearly', months: 12, price: 899000, final_price: cut(699000), discount: { percent: 22 }, badge: 'best_value' },
-        ],
-        code: code ? { value: code, valid: ok, message: ok ? null : 'This code is not valid.' } : null,
-        notice: null,
-      });
+    plans: async () => wait({
+      currency: 'toman',
+      plans: [
+        { id: 'p1', plan: 'premium', title: { en: 'Plus, 1 month', tr: 'Plus, 1 ay', fa: 'پلاس یک‌ماهه' }, price: 50000, currency: 'toman', duration_days: 30 },
+        { id: 'p3', plan: 'premium', title: { en: 'Plus, 3 months', tr: 'Plus, 3 ay', fa: 'پلاس سه‌ماهه' }, price: 129000, currency: 'toman', duration_days: 90 },
+        { id: 'life', plan: 'premium', title: { en: 'Lifetime', tr: 'Lifetime', fa: 'Lifetime' }, price: 900000, currency: 'toman', duration_days: null },
+      ],
+    }),
+    checkDiscount: async (t, productId, code) => {
+      const price = { p1: 50000, p3: 129000, life: 900000 }[productId];
+      if (!price) throw new ApiError('not_found', 'unknown plan', { status: 404, serverCode: 'unknown_product' });
+      const c = String(code).trim().toUpperCase();
+      if (c === 'FREE') return wait({ price, discount: price, amount: 0, currency: 'toman' });
+      if (c !== 'KITTY20') throw new ApiError('server', 'This code cannot be used', { status: 400, serverCode: 'invalid_code' });
+      const discount = Math.floor(price * 0.2);
+      return wait({ price, discount, amount: price - discount, currency: 'toman' });
     },
-    checkout: async (t, body) => { const id = 'o' + ++n; orders.set(id, { checks: 0, plan: body.plan_id }); return wait({ order_id: id, payment_url: 'https://example.com/pay/' + id, amount: 99000, currency: 'IRT' }); },
-    order: async (t, id) => { const o = orders.get(id); if (!o) throw new ApiError('not_found'); o.checks += 1; if (o.checks >= 2) paid = true; return wait({ order_id: id, status: o.checks >= 2 ? 'paid' : 'pending' }); },
+    startPurchase: async (t, body) => {
+      const id = 'pay' + ++n;
+      const free = body.code && String(body.code).trim().toUpperCase() === 'FREE';
+      orders.set(id, { checks: 0 });
+      if (free) { paid = true; orders.get(id).checks = 99; return wait({ payment_id: id, status: 'paid', amount: 0, expires_at: new Date(Date.now() + 30 * 86400000).toISOString() }); }
+      return wait({ payment_id: id, status: 'pending', amount: 50000, pay_url: 'https://example.com/pay/' + id });
+    },
+    purchaseStatus: async (t, id) => { const o = orders.get(id); if (!o) throw new ApiError('not_found', 'unknown payment', { status: 404, serverCode: 'unknown_payment' }); o.checks += 1; if (o.checks >= 2) paid = true; return wait({ payment_id: id, status: o.checks >= 2 ? 'paid' : 'pending', plan: 'premium', amount: 50000 }); },
     listBackups: async () => wait({ backups: backups.map(({ payload, ...m }) => m).reverse(), plan: 'free', limit: 3 }),
     createBackup: async (t, body) => { const m = { id: 'b' + ++n, label: body.label || null, created_at: new Date().toISOString(), payload: body.backup }; backups.push(m); return wait({ id: m.id, created_at: m.created_at }); },
     downloadBackup: async (t, id) => { const b = backups.find((x) => x.id === id); if (!b) throw new ApiError('not_found'); return wait(b.payload); },

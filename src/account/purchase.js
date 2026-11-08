@@ -1,10 +1,11 @@
-// Plans, prices and discounts come from the server; the app only shows them and starts the payment.
-// The server talks to Zibal (the merchant key never reaches the phone), gives us a payment page address, and later
-// tells us whether the order was paid. A plan becomes active only when the server's entitlement says so.
+// Plans, prices and discount codes come from the server (see the server's payment API manual).
+// The app never sends a price: it sends a plan id (`product_id`) and an optional discount code. The server talks to
+// Zibal, gives us `pay_url`, and later tells us whether the purchase was paid. Plus turns on only when the server's
+// entitlement says so.
 
 const FA_DIGITS = '۰۱۲۳۴۵۶۷۸۹';
 
-/** 99000 → "99,000" (Persian digits and separator for fa). Whole numbers only: Toman and Rial have no decimals. */
+/** 99000 → "99,000" (Persian digits and separator for fa). Whole numbers only: Toman has no decimals. */
 export function formatAmount(amount, language = 'en') {
   const n = Math.max(0, Math.round(Number(amount) || 0));
   const fa = language === 'fa';
@@ -12,44 +13,52 @@ export function formatAmount(amount, language = 'en') {
   return fa ? grouped.replace(/\d/g, (d) => FA_DIGITS[Number(d)]) : grouped;
 }
 
-const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v)) ? Number(v) : null);
+const whole = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v)) ? Number(v) : null);
+
+/** The i18n key of the currency name: 'toman' → cur_IRT, 'rial' → cur_IRR. */
+export const currencyKey = (currency) => (String(currency || 'toman').toLowerCase().startsWith('r') || currency === 'IRR' ? 'cur_IRR' : 'cur_IRT');
+
+/** A title that is a string or { en, tr, fa } → the text for this language (falls back to English, then any). */
+export function pickTitle(title, language = 'en') {
+  if (typeof title === 'string') return title.trim().slice(0, 60);
+  if (title && typeof title === 'object') {
+    const v = [title[language], title.en, ...Object.values(title)].find((x) => typeof x === 'string' && x.trim());
+    return v ? v.trim().slice(0, 60) : '';
+  }
+  return '';
+}
 
 /**
  * Server answer of GET /plans → what the screen needs. Bad plans are dropped, never guessed.
- * The charged amount is always the server's `final_price`; the app never works out a price itself.
+ * `price` is whole Toman; a plan's `durationDays` is null for a lifetime plan.
  */
-export function normalizePlans(raw) {
-  const out = { currency: 'IRT', plans: [], code: null, notice: null };
+export function normalizePlans(raw, language = 'en') {
+  const out = { currency: 'toman', plans: [] };
   if (!raw || typeof raw !== 'object') return out;
-  if (raw.currency === 'IRR' || raw.currency === 'IRT') out.currency = raw.currency;
+  if (typeof raw.currency === 'string') out.currency = raw.currency.toLowerCase();
   for (const p of Array.isArray(raw.plans) ? raw.plans : []) {
     if (!p || typeof p.id !== 'string' || !p.id) continue;
-    const price = num(p.price);
+    const price = whole(p.price);
     if (price === null || price < 0) continue;
-    let final = num(p.final_price);
-    if (final === null || final < 0 || final > price) final = price;
-    const d = p.discount && typeof p.discount === 'object' ? p.discount : null;
-    let percent = d ? num(d.percent) : null;
-    if (final < price) percent = percent !== null && percent > 0 && percent < 100 ? Math.round(percent) : Math.round((1 - final / price) * 100);
+    const days = whole(p.duration_days);
     out.plans.push({
       id: p.id,
-      title: typeof p.title === 'string' && p.title.trim() ? p.title.trim().slice(0, 40) : null,
-      months: num(p.months) > 0 ? Math.round(num(p.months)) : null,
-      days: num(p.days) > 0 ? Math.round(num(p.days)) : null,
-      price,
-      finalPrice: final,
-      discounted: final < price,
-      percent: final < price ? percent : null,
-      discountLabel: d && typeof d.label === 'string' ? d.label.slice(0, 40) : null,
-      discountEndsAt: d && typeof d.ends_at === 'string' && !Number.isNaN(Date.parse(d.ends_at)) ? d.ends_at : null,
-      badge: typeof p.badge === 'string' ? p.badge.slice(0, 20) : null,
+      plan: typeof p.plan === 'string' ? p.plan : 'premium',
+      title: pickTitle(p.title, language) || p.id,
+      price: Math.round(price),
+      durationDays: days !== null && days > 0 ? Math.round(days) : null,
     });
   }
-  if (raw.code && typeof raw.code === 'object' && typeof raw.code.value === 'string') {
-    out.code = { value: raw.code.value, valid: raw.code.valid === true, message: typeof raw.code.message === 'string' ? raw.code.message.slice(0, 120) : null };
-  }
-  if (typeof raw.notice === 'string' && raw.notice.trim()) out.notice = raw.notice.trim().slice(0, 200);
   return out;
+}
+
+/** POST /discounts/check answer → { price, discount, amount } or null when it is not a usable answer. */
+export function normalizeQuote(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const price = whole(raw.price);
+  const amount = whole(raw.amount);
+  if (price === null || amount === null || amount < 0 || amount > price) return null;
+  return { price: Math.round(price), amount: Math.round(amount), discount: Math.max(0, Math.round(price - amount)) };
 }
 
 /** Only an https payment page is opened. */
@@ -62,12 +71,30 @@ export function safePaymentUrl(url) {
   }
 }
 
-/** Order status from the server → what the app does next. */
-export function orderOutcome(status) {
-  if (status === 'paid') return 'paid';
-  if (status === 'failed' || status === 'cancelled' || status === 'canceled' || status === 'expired') return status === 'canceled' ? 'cancelled' : status;
-  return 'pending';
+/** Purchase status from the server → what the app does next. */
+export function purchaseOutcome(status) {
+  return status === 'paid' || status === 'failed' || status === 'review' ? status : 'pending';
 }
 
-/** A started order is checked for at most this long (the payment page itself expires much sooner). */
+/** The server's result page opens this link (needs "scheme": "kittyjournal" in app.json). */
+export const PAYMENT_LINK_PREFIX = 'kittyjournal://payment';
+
+/** The return link the server's result page opens: kittyjournal://payment?status=…&payment_id=…. Only `payment_id` is used (the status is never trusted). */
+export function paymentIdFromLink(url, prefix = PAYMENT_LINK_PREFIX) {
+  const s = String(url || '');
+  if (!s.startsWith(prefix)) return null;
+  const m = /[?&]payment_id=([^&#]+)/.exec(s);
+  if (!m) return null;
+  try {
+    const id = decodeURIComponent(m[1]);
+    return /^[A-Za-z0-9_-]{4,64}$/.test(id) ? id : null;
+  } catch {
+    return null;
+  }
+}
+
+/** A started purchase is checked for at most this long. */
 export const ORDER_WATCH_MS = 24 * 60 * 60 * 1000;
+/** After coming back from the payment page: ask every 2.5 s, about 12 times, then offer "Check again". */
+export const POLL_EVERY_MS = 2500;
+export const POLL_TRIES = 12;

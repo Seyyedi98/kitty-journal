@@ -20,6 +20,8 @@ const fs = deps.fs;
 const GAP = 4;
 const MAP_IMAGE_LIMIT = 80; // markers that get a photo thumbnail
 const MAX_THUMB_BYTES = 400 * 1024;
+const ENTRIES_FIRST = 10; // entries shown under a place at first
+const ENTRIES_STEP = 20; // and how many more each "show more" adds
 
 function Cell({ photo, size, onPress, c, index }) {
   const [broken, setBroken] = useState(false);
@@ -88,6 +90,9 @@ export default function MemoriesScreen({ db, t, c, rtl, language, calendar, refr
   }, [photos]);
   // Places tab: spots within LIST_RADIUS_M are one place; places without coordinates stay single.
   const [expanded, setExpanded] = useState({});
+  const [shown, setShown] = useState({}); // place key → how many of its entries are listed (a place can have hundreds)
+  const [mapShown, setMapShown] = useState(ENTRIES_FIRST);
+  useEffect(() => { setMapShown(ENTRIES_FIRST); }, [selectedKey]);
   const listItems = useMemo(() => {
     const near = groupPlaces(places || [], LIST_RADIUS_M).groups;
     const single = (places || [])
@@ -198,6 +203,7 @@ export default function MemoriesScreen({ db, t, c, rtl, language, calendar, refr
     () => (photos || []).map((p) => ({
       id: p.id,
       uri: attachmentUri(fs, p.file_name),
+      thumbUri: p.thumb_name ? attachmentUri(fs, p.thumb_name) : undefined,
       title: p.entry_title || '',
       subtitle: dateText(p.journal_date),
       entryId: p.entry_id,
@@ -254,13 +260,24 @@ export default function MemoriesScreen({ db, t, c, rtl, language, calendar, refr
                 </View>
                 {many && open ? (
                   <View style={{ gap: 2, marginTop: 4 }}>
-                    {p.entries.map((e) => (
+                    {p.entries.slice(0, shown[p.key] || ENTRIES_FIRST).map((e) => (
                       <Pressable key={e.location_id} onPress={() => onOpenEntry(e.entry_id)} accessibilityRole="button" style={{ paddingVertical: 7 }}>
                         <Text style={{ color: c.ink, fontSize: 12, textAlign: rtl ? 'right' : 'left' }} numberOfLines={1}>
                           {dateText(e.journal_date)}{e.title ? ` · ${e.title}` : ''}
                         </Text>
                       </Pressable>
                     ))}
+                    {p.entries.length > (shown[p.key] || ENTRIES_FIRST) ? (
+                      <Pressable
+                        onPress={() => setShown((x) => ({ ...x, [p.key]: (x[p.key] || ENTRIES_FIRST) + ENTRIES_STEP }))}
+                        accessibilityRole="button"
+                        style={[s.pill, { borderColor: c.line, alignSelf: rtl ? 'flex-end' : 'flex-start', marginTop: 4 }]}
+                      >
+                        <Text style={{ color: c.ink, fontSize: 11, fontWeight: '600' }}>
+                          {fmt(t.showMoreEntries, { n: num(Math.min(ENTRIES_STEP, p.entries.length - (shown[p.key] || ENTRIES_FIRST))), left: num(p.entries.length - (shown[p.key] || ENTRIES_FIRST)) })}
+                        </Text>
+                      </Pressable>
+                    ) : null}
                   </View>
                 ) : null}
               </View>
@@ -342,7 +359,7 @@ export default function MemoriesScreen({ db, t, c, rtl, language, calendar, refr
                     <Text style={{ color: c.sageDark, fontSize: 11, fontWeight: '700' }}>{t.openInMaps}</Text>
                   </Pressable>
                 </View>
-                {selected.entries.map((e) => {
+                {selected.entries.slice(0, mapShown).map((e) => {
                   const photo = firstPhotoByEntry.get(e.entry_id);
                   return (
                     <Pressable
@@ -368,6 +385,17 @@ export default function MemoriesScreen({ db, t, c, rtl, language, calendar, refr
                     </Pressable>
                   );
                 })}
+                {selected.entries.length > mapShown ? (
+                  <Pressable
+                    onPress={() => setMapShown((n) => n + ENTRIES_STEP)}
+                    accessibilityRole="button"
+                    style={[s.pill, { borderColor: c.line, alignSelf: rtl ? 'flex-end' : 'flex-start' }]}
+                  >
+                    <Text style={{ color: c.ink, fontSize: 11, fontWeight: '600' }}>
+                      {fmt(t.showMoreEntries, { n: num(Math.min(ENTRIES_STEP, selected.entries.length - mapShown)), left: num(selected.entries.length - mapShown) })}
+                    </Text>
+                  </Pressable>
+                ) : null}
               </View>
             ) : (
               <Text style={{ color: c.muted, fontSize: 11, textAlign: rtl ? 'right' : 'left' }}>{t.mapHint}</Text>
@@ -399,7 +427,7 @@ export default function MemoriesScreen({ db, t, c, rtl, language, calendar, refr
         <Text accessibilityLiveRegion="polite" style={{ color: c.sageDark, fontSize: 11, textAlign: rtl ? 'right' : 'left' }}>{notice}</Text>
 
         ) : null}
-        extraData={[expanded, c, language, calendar, rtl, size, t, tab]}
+        extraData={[expanded, shown, c, language, calendar, rtl, size, t, tab]}
         initialNumToRender={8}
         maxToRenderPerBatch={6}
         windowSize={7}

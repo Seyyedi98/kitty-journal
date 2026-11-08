@@ -5,7 +5,8 @@ const load = async (p) => { const m = await import(p); return { ...(typeof m.def
 const { normalizePhone, normalizeCode, validateProfile, profileFromMe } = await load('../src/account/validation.js');
 const { createApi, createMockApi, ApiError } = await load('../src/account/api.js');
 const { createAuthed } = await load('../src/account/authed.js');
-const { formatAmount, normalizePlans, safePaymentUrl, orderOutcome } = await load('../src/account/purchase.js');
+const { formatAmount, normalizePlans, normalizeQuote, pickTitle, currencyKey, safePaymentUrl, purchaseOutcome, paymentIdFromLink } = await load('../src/account/purchase.js');
+const { errText } = await load('../src/account/errors.js');
 const { daysLeft, premiumActive } = await load('../src/account/plan.js');
 const { exportTextSnapshot, importTextSnapshot, backupNow, restoreNow, wrapForServer, unwrapFromServer, stripBinary, BACKUP_FORMAT, backupLimitOf } = await load('../src/account/cloudBackup.js');
 const { phase2 } = await load('../src/i18n/phase2.js');
@@ -259,60 +260,82 @@ await test('backupNow / restoreNow through the mock server (with authed)', async
   assert.equal((await restoreNow({ db: fresh, api, authed, id: b.id })).added, 1);
   await assert.rejects(restoreNow({ db: fresh, api, authed, id: 'missing' }), (e) => e.code === 'not_found');
 });
-await test('purchase: amounts, plans with discounts, payment url, order status', () => {
-  assert.equal(formatAmount(99000), '99,000');
+await test('purchase: amounts, plans, titles, discount quote, payment url, status, return link', () => {
+  assert.equal(formatAmount(50000), '50,000');
   assert.equal(formatAmount(1299000, 'fa'), '۱٬۲۹۹٬۰۰۰');
   assert.equal(formatAmount(-5), '0');
-  const n = normalizePlans({
-    currency: 'IRT',
+  const raw = {
+    currency: 'toman',
     plans: [
-      { id: 'm', months: 1, price: 100000, final_price: 100000 },
-      { id: 'q', months: 3, price: 250000, final_price: 200000, discount: { percent: 20, label: 'Sale', ends_at: '2026-12-01T00:00:00Z' } },
-      { id: 'y', months: 12, price: 900000, final_price: '700000', badge: 'best_value' },
-      { id: 'bad-price', price: 'abc' },
+      { id: 'Zk3p9QwX1aB2', plan: 'premium', title: { en: 'Premium, 1 month', tr: 'Premium, 1 ay', fa: 'پریمیوم یک‌ماهه' }, price: 50000, currency: 'toman', duration_days: 30 },
+      { id: 'Hs8dLm2VnC4e', plan: 'premium', title: { en: 'Lifetime' }, price: 900000, currency: 'toman', duration_days: null },
+      { id: 'bad', price: 'abc' },
       { price: 5 },
-      { id: 'over', price: 1000, final_price: 5000 },
     ],
-    code: { value: 'AB', valid: false, message: 'No' },
-  });
-  assert.deepEqual(n.plans.map((p) => p.id), ['m', 'q', 'y', 'over']);
-  assert.equal(n.plans[0].discounted, false);
-  assert.equal(n.plans[1].discounted, true); assert.equal(n.plans[1].percent, 20); assert.equal(n.plans[1].discountLabel, 'Sale');
-  assert.equal(n.plans[2].finalPrice, 700000); assert.equal(n.plans[2].percent, 22); // worked out for display only when the server sent no percent
-  assert.equal(n.plans[3].finalPrice, 1000, 'a final price above the price is ignored');
-  assert.equal(n.code.valid, false);
-  assert.equal(normalizePlans(null).plans.length, 0);
-  assert.equal(safePaymentUrl('https://gateway.zibal.ir/start/123'), 'https://gateway.zibal.ir/start/123');
+  };
+  const fa = normalizePlans(raw, 'fa');
+  assert.deepEqual(fa.plans.map((p) => p.id), ['Zk3p9QwX1aB2', 'Hs8dLm2VnC4e']);
+  assert.equal(fa.plans[0].title, 'پریمیوم یک‌ماهه');
+  assert.equal(fa.plans[1].title, 'Lifetime', 'falls back to English');
+  assert.equal(normalizePlans(raw, 'tr').plans[0].title, 'Premium, 1 ay');
+  assert.equal(fa.plans[0].durationDays, 30); assert.equal(fa.plans[1].durationDays, null);
+  assert.equal(fa.currency, 'toman'); assert.equal(currencyKey('toman'), 'cur_IRT'); assert.equal(currencyKey('rial'), 'cur_IRR');
+  assert.equal(normalizePlans(null).plans.length, 0); assert.equal(normalizePlans({ plans: 'x' }).plans.length, 0);
+  assert.equal(pickTitle('Plain'), 'Plain'); assert.equal(pickTitle(null), '');
+  assert.deepEqual(normalizeQuote({ price: 50000, discount: 10000, amount: 40000, currency: 'toman' }), { price: 50000, amount: 40000, discount: 10000 });
+  assert.deepEqual(normalizeQuote({ price: 50000, discount: 50000, amount: 0 }), { price: 50000, amount: 0, discount: 50000 });
+  assert.equal(normalizeQuote({ price: 50000, amount: 60000 }), null, 'an amount above the price is not believed');
+  assert.equal(normalizeQuote(null), null);
+  assert.equal(safePaymentUrl('https://gateway.zibal.ir/start/4012345678'), 'https://gateway.zibal.ir/start/4012345678');
   assert.equal(safePaymentUrl('http://gateway.zibal.ir/start/1'), null);
   assert.equal(safePaymentUrl('javascript:alert(1)'), null);
   assert.equal(safePaymentUrl('nonsense'), null);
-  assert.equal(orderOutcome('paid'), 'paid'); assert.equal(orderOutcome('canceled'), 'cancelled'); assert.equal(orderOutcome('failed'), 'failed'); assert.equal(orderOutcome('whatever'), 'pending');
+  assert.equal(purchaseOutcome('paid'), 'paid'); assert.equal(purchaseOutcome('failed'), 'failed'); assert.equal(purchaseOutcome('review'), 'review');
+  assert.equal(purchaseOutcome('pending'), 'pending'); assert.equal(purchaseOutcome('whatever'), 'pending');
+  assert.equal(paymentIdFromLink('kittyjournal://payment?status=paid&payment_id=Tq7vN2mXk9Rb'), 'Tq7vN2mXk9Rb');
+  assert.equal(paymentIdFromLink('kittyjournal://payment?payment_id=Tq7vN2mXk9Rb&status=unknown'), 'Tq7vN2mXk9Rb');
+  assert.equal(paymentIdFromLink('kittyjournal://payment?status=paid'), null);
+  assert.equal(paymentIdFromLink('https://evil.example/payment?payment_id=Tq7vN2mXk9Rb'), null);
+  assert.equal(paymentIdFromLink('kittyjournal://payment?payment_id=../../x'), null);
 });
 
-await test('purchase: routes (plans with code, checkout, order) and the mock flow', async () => {
+await test('purchase: routes match the server manual, errors read well, mock flow', async () => {
   const calls = [];
   const json = (status, body) => ({ ok: status < 400, status, headers: { get: () => null }, json: async () => body });
   const api = createApi({ baseUrl: 'https://panjeh.ir/api/v1', appId: 'kitty-journal', fetchImpl: async (url, init) => { calls.push({ url, init }); return json(200, {}); } });
-  await api.plans('tok');
-  assert.equal(calls.at(-1).url, 'https://panjeh.ir/api/v1/apps/kitty-journal/plans');
-  await api.plans('tok', 'A B');
-  assert.equal(calls.at(-1).url, 'https://panjeh.ir/api/v1/apps/kitty-journal/plans?code=A%20B');
-  await api.checkout('tok', { plan_id: 'm', code: 'X' });
-  assert.equal(calls.at(-1).init.method, 'POST'); assert.equal(calls.at(-1).url, 'https://panjeh.ir/api/v1/apps/kitty-journal/checkout');
-  assert.deepEqual(JSON.parse(calls.at(-1).init.body), { plan_id: 'm', code: 'X' });
-  await api.order('tok', 'o 1');
-  assert.equal(calls.at(-1).url, 'https://panjeh.ir/api/v1/apps/kitty-journal/orders/o%201');
+  await api.plans();
+  assert.equal(calls.at(-1).url, 'https://panjeh.ir/api/v1/apps/kitty-journal/plans'); assert.equal(calls.at(-1).init.method, 'GET');
+  assert.equal(calls.at(-1).init.headers.Authorization, undefined, 'plans need no sign-in');
+  await api.checkDiscount('tok', 'p1', 'welcome20');
+  assert.equal(calls.at(-1).url, 'https://panjeh.ir/api/v1/apps/kitty-journal/discounts/check'); assert.equal(calls.at(-1).init.method, 'POST');
+  assert.deepEqual(JSON.parse(calls.at(-1).init.body), { product_id: 'p1', code: 'welcome20' });
+  assert.equal(calls.at(-1).init.headers.Authorization, 'Bearer tok');
+  await api.startPurchase('tok', { product_id: 'p1', code: 'X' });
+  assert.equal(calls.at(-1).url, 'https://panjeh.ir/api/v1/apps/kitty-journal/purchases');
+  assert.deepEqual(JSON.parse(calls.at(-1).init.body), { product_id: 'p1', code: 'X' });
+  await api.purchaseStatus('tok', 'Tq7vN2mXk9Rb');
+  assert.equal(calls.at(-1).url, 'https://panjeh.ir/api/v1/apps/kitty-journal/purchases/Tq7vN2mXk9Rb');
+  // the server's readable message for a bad code is kept, other server codes map to translated texts
+  const err = (status, code, message) => createApi({ baseUrl: 'https://panjeh.ir/api/v1', fetchImpl: async () => json(status, { error: { code, message } }) });
+  await assert.rejects(err(400, 'invalid_code', 'This code has expired').checkDiscount('t', 'p1', 'x'), (e) => e.serverCode === 'invalid_code' && e.message === 'This code has expired');
+  const t = phase2.en;
+  await assert.rejects(err(502, 'gateway_unavailable', 'x').startPurchase('t', {}), (e) => errText(t, e) === t.planErrGateway);
+  await assert.rejects(err(502, 'gateway_refused', 'x').startPurchase('t', {}), (e) => errText(t, e) === t.planErrGateway);
+  await assert.rejects(err(503, 'payments_unavailable', 'x').startPurchase('t', {}), (e) => errText(t, e) === t.planErrUnavailable);
+  await assert.rejects(err(404, 'unknown_product', 'x').startPurchase('t', {}), (e) => errText(t, e) === t.planErrUnknown);
   const mock = createMockApi();
-  assert.equal(normalizePlans(await mock.plans('t')).plans.length, 3);
-  const withCode = normalizePlans(await mock.plans('t', 'KITTY20'));
-  assert.equal(withCode.code.valid, true); assert.ok(withCode.plans[0].discounted);
-  assert.equal(normalizePlans(await mock.plans('t', 'NOPE')).code.valid, false);
-  const o = await mock.checkout('t', { plan_id: 'monthly' });
-  assert.ok(safePaymentUrl(o.payment_url));
+  const plans = normalizePlans(await mock.plans(), 'en');
+  assert.equal(plans.plans.length, 3);
+  assert.deepEqual(normalizeQuote(await mock.checkDiscount('t', 'p1', 'kitty20')), { price: 50000, amount: 40000, discount: 10000 });
+  await assert.rejects(mock.checkDiscount('t', 'p1', 'NOPE'), (e) => e.serverCode === 'invalid_code');
+  const o = await mock.startPurchase('t', { product_id: 'p1' });
+  assert.ok(safePaymentUrl(o.pay_url));
   assert.equal((await mock.entitlement('t')).premium, false);
-  assert.equal((await mock.order('t', o.order_id)).status, 'pending');
-  assert.equal((await mock.order('t', o.order_id)).status, 'paid');
+  assert.equal((await mock.purchaseStatus('t', o.payment_id)).status, 'pending');
+  assert.equal((await mock.purchaseStatus('t', o.payment_id)).status, 'paid');
   assert.equal((await mock.entitlement('t')).premium, true);
+  const free = await createMockApi().startPurchase('t', { product_id: 'p1', code: 'free' });
+  assert.equal(free.status, 'paid'); assert.equal(free.amount, 0);
 });
 
 console.log(`\n${passed} passed`);

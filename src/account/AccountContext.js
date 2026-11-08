@@ -5,16 +5,16 @@ import { ENTITLEMENT_REFRESH_MS, OFFLINE_GRACE_DAYS } from './config';
 import { premiumActive } from './plan';
 import { clearSession, loadSession, saveSession } from './session';
 import { createAuthed } from './authed';
-import { ORDER_WATCH_MS, orderOutcome, safePaymentUrl } from './purchase';
+import { ORDER_WATCH_MS, POLL_EVERY_MS, POLL_TRIES, paymentIdFromLink, purchaseOutcome, safePaymentUrl } from './purchase';
 import { profileFromMe } from './validation';
 
-const EMPTY = { ready: true, user: null, premiumRaw: null, plan: 'free', expiresAt: null, checkedAt: null, lastSeenAt: null, lastBackupAt: null, pendingOrder: null, payment: null };
+const EMPTY = { ready: true, user: null, premiumRaw: null, plan: 'free', expiresAt: null, checkedAt: null, lastSeenAt: null, lastBackupAt: null, pendingOrder: null, payment: null, polling: false };
 
 export const AccountContext = React.createContext({
   ...EMPTY, ready: false,
   requestCode: async () => ({}), verifyCode: async () => {}, saveProfile: async () => {}, signOut: async () => {}, authed: async () => { throw new Error('unauthorized'); },
   refreshEntitlement: async () => {}, setLastBackupAt: () => {},
-  startCheckout: async () => { throw new Error('unavailable'); }, checkOrder: async () => null, dismissPayment: () => {},
+  startCheckout: async () => { throw new Error('unavailable'); }, checkOrder: async () => null, pollOrder: async () => null, dismissPayment: () => {},
 });
 export const useAccount = () => React.useContext(AccountContext);
 
@@ -36,6 +36,7 @@ const toState = (s) => (s ? {
   lastBackupAt: s.lastBackupAt || null,
   pendingOrder: s.pendingOrder || null,
   payment: null,
+  polling: false,
 } : EMPTY);
 
 export function AccountProvider({ children }) {
@@ -43,8 +44,10 @@ export function AccountProvider({ children }) {
   const [tick, setTick] = useState(() => Date.now()); // re-evaluates Premium as time passes
   const sessionRef = useRef(null);
   const lastEntCheck = useRef(0);
-  const checkOrderRef = useRef(null);
+  const pollRef = useRef(null);
+  const linkRef = useRef(null);
   const checking = useRef(false);
+  const polling = useRef(false);
   const alive = useRef(true);
   // set to true again on every mount: a hot reload or Strict Mode runs the cleanup first, and without this no screen would ever update
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
@@ -54,7 +57,7 @@ export function AccountProvider({ children }) {
     if (s) await saveSession(s); else await clearSession();
     // logged out while this save was still running: do not bring the old session back
     if (s && sessionRef.current === null) { await clearSession(); return; }
-    if (alive.current) setState((prev) => ({ ...toState(s), payment: s ? prev.payment : null }));
+    if (alive.current) setState((prev) => ({ ...toState(s), payment: s ? prev.payment : null, polling: s ? prev.polling : false }));
   }, []);
   const patchSession = useCallback((patch) => {
     if (!sessionRef.current) return Promise.resolve();
@@ -101,13 +104,18 @@ export function AccountProvider({ children }) {
       const s = await loadSession();
       sessionRef.current = s;
       if (alive.current) setState(toState(s));
-      if (s) { refreshEntitlement(true); if (s.pendingOrder && checkOrderRef.current) checkOrderRef.current(); }
+      if (s) {
+        refreshEntitlement(true);
+        if (s.pendingOrder && pollRef.current) pollRef.current();
+        // the app was opened by the payment result page (kittyjournal://payment?...)
+        Linking.getInitialURL().then((u) => { if (u && linkRef.current) linkRef.current(u); }).catch(() => {});
+      }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   // back to the foreground: plan re-checked (at most once per ENTITLEMENT_REFRESH_MS)
   useEffect(() => {
-    const sub = AppState.addEventListener('change', (st) => { if (st === 'active') { setTick(Date.now()); refreshEntitlement(false); if (checkOrderRef.current) checkOrderRef.current(); } });
+    const sub = AppState.addEventListener('change', (st) => { if (st === 'active') { setTick(Date.now()); refreshEntitlement(false); if (pollRef.current) pollRef.current(); } });
     const id = setInterval(() => {
       const now = Date.now();
       setTick(now);
@@ -120,44 +128,87 @@ export function AccountProvider({ children }) {
   }, [refreshEntitlement, patchSession]);
 
   // ── buying a plan ────────────────────────────────────────────────────────────
-  /** Ask the server for a payment page (it talks to Zibal), remember the order and open the page in the browser. */
-  const startCheckout = useCallback(async (planId, code) => {
-    const r = await authed((tok) => getApi().checkout(tok, code ? { plan_id: planId, code } : { plan_id: planId }));
-    const url = r && typeof r.order_id === 'string' ? safePaymentUrl(r.payment_url) : null;
+  const say = useCallback((status, id) => {
+    if (alive.current) setState((st) => ({ ...st, payment: { status, at: Date.now(), id: id || null } }));
+  }, []);
+  /**
+   * Ask the server for a purchase (it talks to Zibal) and open the payment page in the system browser.
+   * Free with a code → the plan is already active, nothing is opened. Returns { paymentId, free }.
+   */
+  const startCheckout = useCallback(async (productId, code) => {
+    const r = await authed((tok) => getApi().startPurchase(tok, code ? { product_id: productId, code } : { product_id: productId }));
+    if (!r || typeof r.payment_id !== 'string') throw new ApiError('server', 'unexpected answer from the server');
+    if (r.status === 'paid') {
+      await refreshEntitlement(true);
+      say('paid', r.payment_id);
+      return { paymentId: r.payment_id, free: true };
+    }
+    const url = safePaymentUrl(r.pay_url);
     if (!url) throw new ApiError('server', 'unexpected answer from the server');
-    await patchSession({ pendingOrder: { id: r.order_id, at: Date.now() } });
+    await patchSession({ pendingOrder: { id: r.payment_id, at: Date.now() } });
     if (alive.current) setState((st) => ({ ...st, payment: null }));
     try { await Linking.openURL(url); } catch { throw new ApiError('server', 'cannot open the payment page'); }
-    return { orderId: r.order_id };
-  }, [authed, patchSession]);
+    return { paymentId: r.payment_id, free: false };
+  }, [authed, patchSession, refreshEntitlement, say]);
   /**
-   * Ask the server how the last started order went. 'paid' → the plan is re-read from the server right away.
-   * Returns 'paid' | 'failed' | 'cancelled' | 'expired' | 'pending' | 'unknown' (offline) | null (no order).
+   * Ask the server once how the open purchase went. 'paid' → the plan is re-read from the server right away.
+   * Returns 'paid' | 'failed' | 'review' | 'expired' | 'pending' | 'unknown' (offline) | null (no purchase).
    */
   const checkOrder = useCallback(async () => {
     const cur = sessionRef.current && sessionRef.current.pendingOrder;
-    if (!cur || checking.current) return cur ? 'pending' : null;
+    if (!cur) return null;
+    if (checking.current) return 'pending';
     checking.current = true;
     const finish = async (status) => {
       await patchSession({ pendingOrder: null });
-      if (alive.current) setState((st) => ({ ...st, payment: { status, at: Date.now() } }));
+      say(status, cur.id);
       return status;
     };
     try {
-      const o = await authed((tok) => getApi().order(tok, cur.id));
-      const outcome = orderOutcome(o && o.status);
+      const o = await authed((tok) => getApi().purchaseStatus(tok, cur.id));
+      const outcome = purchaseOutcome(o && o.status);
       if (outcome === 'paid') { await refreshEntitlement(true); return await finish('paid'); }
       if (outcome !== 'pending') return await finish(outcome);
       if (Date.now() - (cur.at || 0) > ORDER_WATCH_MS) return await finish('expired');
       return 'pending';
     } catch (e) {
-      if (e instanceof ApiError && e.code === 'not_found') return finish('failed');
-      return 'unknown'; // offline or server busy: the order stays and is checked again later
+      if (e instanceof ApiError && (e.code === 'not_found' || e.serverCode === 'unknown_payment')) return finish('failed');
+      return 'unknown'; // offline or server busy: the purchase stays and is checked again later
     } finally {
       checking.current = false;
     }
-  }, [authed, patchSession, refreshEntitlement]);
-  checkOrderRef.current = checkOrder;
+  }, [authed, patchSession, refreshEntitlement, say]);
+  /** After coming back from the payment page: ask every 2.5 s for about 30 s, then stop (the screen offers "Check again"). */
+  const pollOrder = useCallback(async () => {
+    if (polling.current) return null;
+    polling.current = true;
+    if (alive.current) setState((st) => ({ ...st, polling: true }));
+    try {
+      let r = null;
+      for (let i = 0; i < POLL_TRIES && alive.current; i += 1) {
+        r = await checkOrder();
+        if (r !== 'pending') break;
+        await new Promise((ok) => setTimeout(ok, POLL_EVERY_MS));
+      }
+      return r;
+    } finally {
+      polling.current = false;
+      if (alive.current) setState((st) => ({ ...st, polling: false }));
+    }
+  }, [checkOrder]);
+  pollRef.current = pollOrder;
+  /** The result page opened kittyjournal://payment?...&payment_id=...: only the id is used, the server says what happened. */
+  linkRef.current = async (url) => {
+    const id = paymentIdFromLink(url);
+    if (!id || !sessionRef.current) return;
+    const cur = sessionRef.current.pendingOrder;
+    if (!cur || cur.id !== id) await patchSession({ pendingOrder: { id, at: Date.now() } });
+    pollOrder();
+  };
+  useEffect(() => {
+    const sub = Linking.addEventListener('url', (e) => { if (e && e.url && linkRef.current) linkRef.current(e.url); });
+    return () => { if (sub && sub.remove) sub.remove(); };
+  }, []);
   const dismissPayment = useCallback(() => { setState((st) => ({ ...st, payment: null })); }, []);
 
   const requestCode = useCallback((phone) => getApi().requestCode(phone), []);
@@ -201,8 +252,8 @@ export function AccountProvider({ children }) {
       premium: premiumRaw === null ? null : active,
       premiumUnconfirmed: premiumRaw === true && !active && !expired, // Premium on record, but it must be confirmed online
       pendingOrder: Boolean(state.pendingOrder),
-      requestCode, verifyCode, saveProfile, signOut, authed, refreshEntitlement, setLastBackupAt, startCheckout, checkOrder, dismissPayment };
-  }, [state, tick, requestCode, verifyCode, saveProfile, signOut, authed, refreshEntitlement, setLastBackupAt, startCheckout, checkOrder, dismissPayment],
+      requestCode, verifyCode, saveProfile, signOut, authed, refreshEntitlement, setLastBackupAt, startCheckout, checkOrder, pollOrder, dismissPayment };
+  }, [state, tick, requestCode, verifyCode, saveProfile, signOut, authed, refreshEntitlement, setLastBackupAt, startCheckout, checkOrder, pollOrder, dismissPayment],
   );
   return <AccountContext.Provider value={value}>{children}</AccountContext.Provider>;
 }
