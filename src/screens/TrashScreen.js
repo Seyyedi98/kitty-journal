@@ -68,7 +68,7 @@ export default function TrashScreen({ db, t, c, rtl, language, calendar, onBack,
       {items === null ? (
         <Text style={{ color: c.muted, fontSize: 12 }}>{t.loading}</Text>
       ) : items.length === 0 ? (
-        <EmptyState c={c} title={t.trashEmpty} hint={t.trashEmptyHint} icon={Trash2} />
+        <EmptyState c={c} title={t.trashEmpty} hint={t.trashEmptyHint} icon={Trash2} warm />
       ) : (
         <>
           <View style={[s.topRow, rtl && s.rowReverse]}>

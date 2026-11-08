@@ -19,7 +19,7 @@ export function setUiLanguage(language) {
 /** Font family for the current language/weight (undefined until fonts have loaded). */
 export function uiFont(weight = 400) {
   if (!ACTIVE_FONTS_LOADED) return undefined;
-  const family = FONT_FAMILIES[ACTIVE_LANGUAGE] || FONT_FAMILIES.en;
+  const family = familyFor(ACTIVE_LANGUAGE);
   return family[String(weight)] || family['400'];
 }
 export function setUiFontsLoaded(loaded) {
@@ -45,13 +45,50 @@ export const FONT_FAMILIES = {
   },
 };
 
+// Fonts the user can choose (Settings → Appearance). Names are the ones the font packages export; src/fonts.js loads the files.
+// 800 maps to Bold because these families stop at 700.
+const family4 = (prefix) => ({ 400: `${prefix}_400Regular`, 500: `${prefix}_500Medium`, 600: `${prefix}_600SemiBold`, 700: `${prefix}_700Bold`, 800: `${prefix}_700Bold` });
+export const PERSIAN_FONT_FAMILIES = {
+  vazirmatn: family4('Vazirmatn'),
+  naskh: family4('NotoNaskhArabic'),
+  notosans: family4('NotoSansArabic'),
+  cairo: family4('Cairo'),
+};
+export const LATIN_FONT_FAMILIES = {
+  dmsans: family4('DMSans'),
+  inter: family4('Inter'),
+  nunito: family4('Nunito'),
+  poppins: family4('Poppins'),
+  lora: family4('Lora'),
+};
+let ACTIVE_FA_FONT = 'vazirmatn';
+let ACTIVE_LATIN_FONT = 'dmsans';
+const fontListeners = new Set();
+const notifyFont = () => fontListeners.forEach((fn) => fn());
+/** Choose the Persian / English+Turkish font. Every Text / TextInput re-renders with it (call from an effect, not during render). */
+export function setUiPersianFont(key) {
+  if (!PERSIAN_FONT_FAMILIES[key] || key === ACTIVE_FA_FONT) return;
+  ACTIVE_FA_FONT = key;
+  notifyFont();
+}
+export function setUiLatinFont(key) {
+  if (!LATIN_FONT_FAMILIES[key] || key === ACTIVE_LATIN_FONT) return;
+  ACTIVE_LATIN_FONT = key;
+  notifyFont();
+}
+const subscribeFont = (fn) => { fontListeners.add(fn); return () => fontListeners.delete(fn); };
+const getFont = () => `${ACTIVE_FA_FONT}|${ACTIVE_LATIN_FONT}`;
+const useUiFont = () => React.useSyncExternalStore(subscribeFont, getFont, getFont);
+const familyFor = (language) => (language === 'fa' ? PERSIAN_FONT_FAMILIES[ACTIVE_FA_FONT] : LATIN_FONT_FAMILIES[ACTIVE_LATIN_FONT]);
+
 const RTL_LANGUAGES = ['fa'];
 const rtlAlign = (flattened) => (RTL_LANGUAGES.includes(ACTIVE_LANGUAGE) && !flattened.textAlign ? { textAlign: 'right' } : null);
 
 export function Text({ style, ...props }) {
+  useUiFont(); // re-render when the font is changed
   const flattened = StyleSheet.flatten(style) || {};
   const weight = String(flattened.fontWeight || '400');
-  const family = FONT_FAMILIES[ACTIVE_LANGUAGE] || FONT_FAMILIES.en;
+  const family = familyFor(ACTIVE_LANGUAGE);
   const fontFamily = flattened.fontFamily || (ACTIVE_FONTS_LOADED ? family[weight] || family['400'] : undefined);
   return (
     <NativeText
@@ -63,8 +100,9 @@ export function Text({ style, ...props }) {
 }
 
 export function TextInput(props) {
+  useUiFont();
   const flattened = StyleSheet.flatten(props.style) || {};
-  const family = FONT_FAMILIES[ACTIVE_LANGUAGE] || FONT_FAMILIES.en;
+  const family = familyFor(ACTIVE_LANGUAGE);
   const fontFamily = flattened.fontFamily || (ACTIVE_FONTS_LOADED ? family['400'] : undefined);
   return (
     <NativeTextInput

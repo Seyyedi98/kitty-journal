@@ -1,6 +1,6 @@
 import { Dialog } from '../platform/dialog';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Image, StyleSheet, View } from 'react-native';
 import { Eraser, HardDrive, ScanSearch, Trash2 } from 'lucide-react-native';
 import { ScrollView, Text } from '../ui';
 import { Button, Card, Note, SubHeader } from '../components/common';
@@ -10,6 +10,7 @@ import { formatBytes, numberFormatter } from '../utils/format';
 import { fmt } from '../i18n';
 
 const fs = deps.fs;
+const STORAGE_CAT = require('../../assets/images/storage-cat.png');
 
 async function folderStats(dir, filter) {
   let count = 0;
@@ -127,6 +128,7 @@ export default function StorageScreen({ db, t, c, rtl, language, onBack, onChang
   return (
     <ScrollView contentContainerStyle={s.page}>
       <SubHeader title={t.storage} onBack={onBack} c={c} rtl={rtl} t={t} />
+      <Image source={STORAGE_CAT} style={s.cat} resizeMode="contain" accessibilityIgnoresInvertColors />
 
       <Card title={t.storage} c={c} rtl={rtl}>
         {stats ? (
@@ -169,5 +171,6 @@ export default function StorageScreen({ db, t, c, rtl, language, onBack, onChang
 }
 
 const s = StyleSheet.create({
-  page: { paddingTop: 22, paddingBottom: 40, gap: 14 },
+  page: { paddingTop: 22, paddingBottom: 24, gap: 14 },
+  cat: { width: 150, height: 136, alignSelf: 'center' },
 });

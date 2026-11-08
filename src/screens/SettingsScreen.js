@@ -7,7 +7,7 @@ import { fmt } from '../i18n';
 import { usePremium } from '../premium';
 import { useAccount } from '../account/AccountContext';
 
-const PLUS_IMAGE = require('../../assets/images/plus-banner.png');
+const PLUS_IMAGE = require('../../assets/images/plus-cat.png');
 
 const THEME_LABELS = { sage: 'themeSage', rose: 'themeRose', lavender: 'themeLavender', ocean: 'themeOcean', cozy: 'themeCozy', navy: 'themeNavy', vanilla: 'themeVanilla', professional: 'themeProfessional', summer: 'themeSummer', forest: 'themeForest', sunset: 'themeSunset' };
 
@@ -112,6 +112,7 @@ export default function SettingsScreen({
         <LinkRow icon={Bell} title={t.reminders} onPress={() => onOpen('reminders')} trailing={chevron} c={c} rtl={rtl} />
         <LinkRow
           icon={Trash2}
+          warm
           title={t.trash}
           subtitle={trashCount ? fmt(t.trashCount, { n: num(trashCount) }) : t.trashEmpty}
           onPress={() => onOpen('trash')}

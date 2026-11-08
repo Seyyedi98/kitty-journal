@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
-import { BadgeCheck, Check, CreditCard, Crown, Lock, RefreshCw, Tag } from 'lucide-react-native';
+import { Image, Pressable, StyleSheet, View } from 'react-native';
+import { BadgeCheck, Check, CreditCard, Lock, RefreshCw, Tag } from 'lucide-react-native';
 import { ScrollView, Text, TextInput } from '../ui';
 import { Button, Card, Note, SubHeader } from '../components/common';
 import { fmt } from '../i18n';
@@ -13,6 +13,7 @@ import { currencyKey, formatAmount, normalizePlans, normalizeQuote } from '../ac
 
 const FREE_ITEMS = ['pfFreeEntries', 'pfFreeSearch', 'pfFreeBackup', 'pfFreeReminders', 'pfFreeShare', 'pfFreeLook', 'pfFreeInsights'];
 const PAYMENT_NOTE = { paid: 'planPaid', failed: 'planFailed', review: 'planReview', expired: 'planExpired' };
+const PLUS_CAT = require('../../assets/images/plus-cat.png');
 const GREEN = '#2F6B3A';
 const RED = '#B64E45';
 
@@ -126,7 +127,7 @@ export default function PremiumScreen({ t, c, rtl, language = 'en', premium, num
       <SubHeader title={t.premium} onBack={onBack} c={c} rtl={rtl} t={t} />
 
       <View style={[s.hero, { backgroundColor: c.accentSoft, borderColor: c.line }]}>
-        <Crown size={30} color={c.accent} />
+        <Image source={PLUS_CAT} style={s.heroCat} resizeMode="contain" accessibilityIgnoresInvertColors />
         <Text style={{ color: c.ink, fontSize: 20, fontWeight: '700', textAlign: 'center' }}>{t.premiumTitle}</Text>
         <Text style={{ color: c.muted, fontSize: 14, lineHeight: 21, textAlign: 'center' }}>{t.premiumSubtitle}</Text>
       </View>
@@ -237,6 +238,7 @@ export default function PremiumScreen({ t, c, rtl, language = 'en', premium, num
 const s = StyleSheet.create({
   page: { paddingTop: 25, paddingBottom: 24, gap: 12 },
   rowReverse: { flexDirection: 'row-reverse' },
+  heroCat: { width: 150, height: 164 },
   hero: { borderWidth: 1, borderRadius: 22, padding: 22, gap: 8, alignItems: 'center' },
   item: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 3 },
   plan: { borderWidth: 1.5, borderRadius: 16, padding: 12, gap: 10, alignItems: 'center' },

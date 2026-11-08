@@ -2,6 +2,7 @@ import React from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Switch, View } from 'react-native';
 import { ArrowLeft, ArrowRight } from 'lucide-react-native';
 import { Text } from '../ui';
+import { isLightPalette } from '../theme';
 
 /** Header of a sub-screen (Backup, Trash, …) with a back button. */
 export function SubHeader({ title, onBack, c, rtl, t, right }) {
@@ -74,7 +75,9 @@ export function Button({ label, onPress, c, rtl, variant = 'secondary', icon: Ic
 }
 
 /** A tappable row: icon · title/subtitle · trailing element. */
-export function LinkRow({ icon: Icon, title, subtitle, onPress, trailing, c, rtl, last }) {
+export function LinkRow({ icon: Icon, title, subtitle, onPress, trailing, c, rtl, last, warm }) {
+  // warm: fixed orange icon instead of the theme's sage green (used for Trash)
+  const tint = warm ? (isLightPalette(c) ? { bg: '#FBE3CF', fg: '#D9732B' } : { bg: '#4A3526', fg: '#F0A56B' }) : null;
   return (
     <Pressable
       onPress={onPress}
@@ -82,8 +85,8 @@ export function LinkRow({ icon: Icon, title, subtitle, onPress, trailing, c, rtl
       style={[s.linkRow, { borderBottomColor: c.line, borderBottomWidth: last ? 0 : StyleSheet.hairlineWidth }, rtl && s.rowReverse]}
     >
       {Icon ? (
-        <View style={[s.linkIcon, { backgroundColor: c.sage }]}>
-          <Icon size={16} color={c.sageDark} />
+        <View style={[s.linkIcon, { backgroundColor: tint ? tint.bg : c.sage }]}>
+          <Icon size={16} color={tint ? tint.fg : c.sageDark} />
         </View>
       ) : null}
       <View style={{ flex: 1 }}>

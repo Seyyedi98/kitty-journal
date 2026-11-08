@@ -5,6 +5,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   AppState,
   BackHandler,
+  Image,
   Platform,
   Pressable,
   StyleSheet,
@@ -14,6 +15,7 @@ import {
 } from "react-native";
 import { SQLiteProvider, useSQLiteContext } from "expo-sqlite";
 import { useFonts } from "expo-font";
+import { LATIN_FONT_KEYS, PERSIAN_FONT_KEYS, loadFont } from "./src/fonts";
 import {
   DMSans_400Regular,
   DMSans_500Medium,
@@ -72,7 +74,6 @@ import {
   shiftCalendarMonth,
 } from "./src/calendar";
 import Dock from "./src/components/Dock";
-import CatIllustration from "./src/components/CatIllustration";
 import EditorModal from "./src/components/EditorModal";
 import EntryPreview from "./src/components/EntryPreview";
 import FilterBar, {
@@ -80,7 +81,7 @@ import FilterBar, {
   applyFilters,
   hasActiveFilters,
 } from "./src/components/FilterBar";
-import { BottomInsetContext, ScrollView, Text, TextInput, setUiFontsLoaded, setUiLanguage } from "./src/ui";
+import { BottomInsetContext, ScrollView, Text, TextInput, setUiFontsLoaded, setUiLanguage, setUiLatinFont, setUiPersianFont } from "./src/ui";
 import { DEFAULT_THEME, MOODS, THEME_KEYS, buildPalette, isLightPalette } from "./src/theme";
 import { runMigrations } from "./src/db/migrations";
 import {
@@ -125,6 +126,9 @@ import { syncReminders } from "./src/services/reminderSync";
 import { numberFormatter } from "./src/utils/format";
 import { EMOTIONS } from "./src/utils/emotions";
 
+const HOME_CAT = require("./assets/images/home-cat.png"); // 560 x 337
+const APP_LOGO = require("./assets/images/logo.png"); // the app icon, shown in the top bar
+
 // Lock screen rotate
 // useEffect(() => {
 //   ScreenOrientation.lockAsync(
@@ -166,6 +170,18 @@ function AppShell() {
     Vazirmatn_700Bold,
   });
   setUiFontsLoaded(fontsLoaded);
+  const [faFont, setFaFont] = useState("vazirmatn"); // chosen Persian font (Settings → Appearance)
+  const [latinFont, setLatinFont] = useState("dmsans"); // chosen English / Turkish font
+  useEffect(() => {
+    let off = false;
+    loadFont(faFont).then((ok) => { if (ok && !off) setUiPersianFont(faFont); });
+    return () => { off = true; };
+  }, [faFont]);
+  useEffect(() => {
+    let off = false;
+    loadFont(latinFont).then((ok) => { if (ok && !off) setUiLatinFont(latinFont); });
+    return () => { off = true; };
+  }, [latinFont]);
   const db = useSQLiteContext();
   const lock = useAppLock(db);
   const insets = useSafeAreaInsets();
@@ -269,6 +285,8 @@ function AppShell() {
         setCalendarType(cal);
         setAppearance(look);
         if (THEME_KEYS.includes(saved.theme)) setTheme(saved.theme);
+        if (PERSIAN_FONT_KEYS.includes(saved.faFont)) setFaFont(saved.faFont);
+        if (LATIN_FONT_KEYS.includes(saved.latinFont)) setLatinFont(saved.latinFont);
         const effective =
           cal === "default" ? (lang === "fa" ? "solarHijri" : "gregorian") : cal;
         setCalendarMonth(getCalendarParts(dateKey(), effective));
@@ -414,6 +432,16 @@ function AppShell() {
     setTheme(value);
     persistSetting("theme", value);
   };
+  const changeFaFont = (value) => {
+    if (!PERSIAN_FONT_KEYS.includes(value)) return;
+    setFaFont(value);
+    persistSetting("faFont", value);
+  };
+  const changeLatinFont = (value) => {
+    if (!LATIN_FONT_KEYS.includes(value)) return;
+    setLatinFont(value);
+    persistSetting("latinFont", value);
+  };
   const changeAppearance = (value) => {
     setAppearance(value);
     persistSetting("appearance", value);
@@ -519,9 +547,7 @@ function AppShell() {
         rtl && styles.rowReverse,
       ]}
     >
-      <View style={[styles.brandIcon, { backgroundColor: c.sage }]}>
-        <CatIllustration width={31} height={31} />
-      </View>
+      <Image source={APP_LOGO} style={styles.brandLogo} resizeMode="contain" accessibilityIgnoresInvertColors />
       <Text style={[styles.brand, { color: c.ink }]}>Kitty Journal</Text>
       <View style={{ flex: 1 }} />
       <Text
@@ -626,7 +652,16 @@ function AppShell() {
     );
   else if (settingsOpen && subScreen === "premium")
     content = (
-      <PremiumScreen t={t} c={c} rtl={rtl} premium={premium} onBack={() => setSubScreen(null)} />
+      <PremiumScreen
+        t={t}
+        c={c}
+        rtl={rtl}
+        language={language}
+        premium={premium}
+        num={numberFormatter(language)}
+        onBack={() => setSubScreen(null)}
+        onOpenAccount={() => setSubScreen("account")}
+      />
     );
   else if (settingsOpen && subScreen === "appearance")
     content = (
@@ -639,6 +674,11 @@ function AppShell() {
         theme={theme}
         setTheme={changeTheme}
         dark={dark}
+        language={language}
+        faFont={faFont}
+        setFaFont={changeFaFont}
+        latinFont={latinFont}
+        setLatinFont={changeLatinFont}
         onBack={() => setSubScreen(null)}
       />
     );
@@ -1113,9 +1153,11 @@ function HomeScreen({
                 {t.subtitle}
               </Text>
             </View>
-            <CatIllustration
-              width={isTablet ? 142 : 104}
-              height={isTablet ? 130 : 98}
+            <Image
+              source={HOME_CAT}
+              style={{ width: isTablet ? 190 : 128, height: Math.round((isTablet ? 190 : 128) * 337 / 560) }}
+              resizeMode="contain"
+              accessibilityIgnoresInvertColors
             />
           </Animated.View>
           <Animated.View
@@ -1613,6 +1655,7 @@ const styles = StyleSheet.create({
     gap: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
+  brandLogo: { width: 34, height: 34, borderRadius: 9 },
   brandIcon: {
     width: 31,
     height: 31,

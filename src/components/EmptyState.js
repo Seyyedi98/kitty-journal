@@ -2,12 +2,17 @@ import React from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
 import { BookOpen } from 'lucide-react-native';
 import { Text } from '../ui';
+import { isLightPalette } from '../theme';
 
-export default function EmptyState({ c, title, hint, icon: Icon = BookOpen }) {
+// Fixed warm (orange) colours — not taken from the theme.
+const warmTint = (c) => (isLightPalette(c) ? { bg: '#FBE3CF', fg: '#D9732B' } : { bg: '#4A3526', fg: '#F0A56B' });
+
+export default function EmptyState({ c, title, hint, icon: Icon = BookOpen, warm }) {
+  const tint = warm ? warmTint(c) : null;
   return (
     <View style={[s.card, { backgroundColor: c.card, borderColor: c.line }]}>
-      <View style={[s.art, { backgroundColor: c.lavender }]}>
-        <Icon size={27} color="#A091B0" />
+      <View style={[s.art, { backgroundColor: tint ? tint.bg : c.lavender }]}>
+        <Icon size={27} color={tint ? tint.fg : '#A091B0'} />
         <View style={s.cat}>
           <Text style={{ fontSize: 15 }}>☻</Text>
         </View>

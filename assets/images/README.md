@@ -5,3 +5,7 @@
 - `teaserImages.js`: the cat stickers in the Plus preview cards stored as text (base64), used by `components/MemoriesTeaser.js`.
 
 Add any new picture to this folder.
+
+- `storage-cat.png`: cat in a box, Storage screen.
+- `home-cat.png`: cat on a cushion with a phone, Home screen greeting.
+- `plus-cat.png`: cat with a stack of money, Plus page and the Settings banner (replaces `plus-banner.png`, which can be deleted).
