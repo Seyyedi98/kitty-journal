@@ -122,10 +122,11 @@ export async function saveEntry(db, input) {
         now,
         id,
       );
+      if (input.font !== undefined) await db.runAsync('UPDATE entries SET font=? WHERE id=?', input.font || null, id);
     } else {
       const res = await db.runAsync(
-        `INSERT INTO entries (uuid, title, body, body_html, content_format_version, journal_date, mood, favorite, pinned, created_at, updated_at)
-         VALUES (lower(hex(randomblob(16))),?,?,?,?,?,?,0,0,?,?)`,
+        `INSERT INTO entries (uuid, title, body, body_html, content_format_version, journal_date, mood, favorite, pinned, created_at, updated_at, font)
+         VALUES (lower(hex(randomblob(16))),?,?,?,?,?,?,0,0,?,?,?)`,
         title,
         body,
         bodyHtml,
@@ -134,6 +135,7 @@ export async function saveEntry(db, input) {
         input.mood ?? null,
         now,
         now,
+        input.font || null,
       );
       id = res.lastInsertRowId;
     }

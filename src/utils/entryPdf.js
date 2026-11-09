@@ -188,14 +188,14 @@ h1.title { color: ${v.accent}; font-weight: 400; letter-spacing: .03em; }
  * @param {boolean} p.rtl
  * @param {string} p.footer         small line at the end
  */
-export function buildEntryHtml({ entry, bodyHtml, template = DEFAULT_TEMPLATE, dateText, photos = [], moodFace = '', rtl = false, footer = 'Kitty Journal' }) {
+export function buildEntryHtml({ entry, bodyHtml, template = DEFAULT_TEMPLATE, dateText, photos = [], moodFace = '', rtl = false, footer = 'Kitty Journal', fontFaces = '' }) {
   const key = VARS[template] ? template : DEFAULT_TEMPLATE;
   const v = VARS[key];
   const tags = (entry.tags || []).map((x) => `<span class="chip">#${escapeHtml(x.name)}</span>`).join('');
   const place = entry.location && (entry.location.name || entry.location.address);
   const placeChip = place ? `<span class="chip">📍 ${escapeHtml(place)}</span>` : '';
   const imgs = photos.filter(Boolean).map((src) => `<div class="ph"><img src="${src}"></div>`).join('');
-  return `<!doctype html><html lang="${rtl ? 'fa' : 'en'}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>${CSS(v, key, rtl)}</style></head><body class="tpl-${key}"><div class="frame"></div><table class="flow"><thead><tr><td><div class="sp"></div></td></tr></thead><tfoot><tr><td><div class="sp"></div></td></tr></tfoot><tbody><tr><td><div class="content">
+  return `<!doctype html><html lang="${rtl ? 'fa' : 'en'}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>${CSS(v, key, rtl)}</style>${fontFaces ? `<style>${fontFaces}</style>` : ''}</head><body class="tpl-${key}"><div class="frame"></div><table class="flow"><thead><tr><td><div class="sp"></div></td></tr></thead><tfoot><tr><td><div class="sp"></div></td></tr></tfoot><tbody><tr><td><div class="content">
 <div class="head">${moodFace ? `<div class="mood">${/^data:/.test(moodFace) ? `<img src="${moodFace}" style="width:40px;height:40px;vertical-align:middle" />` : moodFace}</div>` : ''}<div class="date">${escapeHtml(dateText)}</div>${entry.title ? `<h1 class="title">${escapeHtml(entry.title)}</h1>` : ''}</div>
 ${placeChip || tags ? `<div class="meta">${placeChip}${tags}</div>` : ''}
 ${imgs ? `<div class="photos${photos.filter(Boolean).length > 1 ? ' many' : ''}">${imgs}</div>` : ''}

@@ -117,6 +117,7 @@ export async function collectData(db) {
       mood: e.mood ?? null,
       favorite: e.favorite ? 1 : 0,
       pinned: e.pinned ? 1 : 0,
+      font: e.font ?? null,
       created_at: e.created_at,
       updated_at: e.updated_at,
       deleted_at: e.deleted_at ?? null,
@@ -394,6 +395,7 @@ export function validateData(input) {
       mood,
       favorite: flag(e.favorite),
       pinned: flag(e.pinned),
+      font: typeof e.font === 'string' && /^[a-z0-9_]{1,32}$/.test(e.font) ? e.font : null,
       created_at: e.created_at,
       updated_at: e.updated_at,
       deleted_at: e.deleted_at ?? null,
@@ -639,10 +641,10 @@ async function stageAttachment(deps, parsed, att, written) {
 async function insertEntryDeep(db, e, staged) {
   const res = await db.runAsync(
     `INSERT INTO entries (uuid, title, body, body_html, journal_date, mood, favorite, pinned, created_at,
-                          updated_at, deleted_at, content_format_version)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+                          updated_at, deleted_at, content_format_version, font)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     e.uuid, e.title, e.body, e.body_html, e.journal_date, e.mood, e.favorite, e.pinned,
-    e.created_at, e.updated_at, e.deleted_at, e.content_format_version,
+    e.created_at, e.updated_at, e.deleted_at, e.content_format_version, e.font ?? null,
   );
   const id = res.lastInsertRowId;
   const now = nowIso();

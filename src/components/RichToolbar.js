@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { usePremium } from '../premium';
 import { StyleSheet, View } from 'react-native';
 import {
@@ -6,17 +6,27 @@ import {
 } from 'lucide-react-native';
 import { ScrollView, Text } from '../ui';
 import { PressableScale } from '../motion';
+import { FONT_CATALOG } from '../utils/fontCatalog';
+import { ALL_FONT_KEYS, loadNativeFonts, toolbarFamily } from '../toolbarFonts';
 
 // Mid-tone colours that stay readable on both the light and the dark theme.
 export const TEXT_COLORS = [
   { hex: '#d6453d', key: 'colorRed' },
   { hex: '#e07b20', key: 'colorOrange' },
+  { hex: '#e0a800', key: null },
   { hex: '#3e9b5a', key: 'colorGreen' },
+  { hex: '#1f9d8f', key: null },
   { hex: '#3b7dd8', key: 'colorBlue' },
+  { hex: '#2d4fa8', key: null },
   { hex: '#8a5cc7', key: 'colorPurple' },
   { hex: '#d6538f', key: 'colorPink' },
+  { hex: '#b3263e', key: null },
   { hex: '#8b5a2b', key: 'colorBrown' },
   { hex: '#7a7a7a', key: 'colorGray' },
+  { hex: '#4a4a4a', key: null },
+  { hex: '#c9a227', key: null },
+  { hex: '#6b8e23', key: null },
+  { hex: '#00a3c4', key: null },
 ];
 
 export const HIGHLIGHTS = [
@@ -26,16 +36,17 @@ export const HIGHLIGHTS = [
   { value: 'rgba(244,143,177,0.4)', key: 'hlPink' },
   { value: 'rgba(255,167,38,0.4)', key: 'hlOrange' },
   { value: 'rgba(186,104,200,0.35)', key: 'hlPurple' },
+  { value: 'rgba(239,83,80,0.35)', key: null },
+  { value: 'rgba(77,208,225,0.4)', key: null },
+  { value: 'rgba(174,213,129,0.5)', key: null },
+  { value: 'rgba(255,241,118,0.55)', key: null },
+  { value: 'rgba(161,136,127,0.4)', key: null },
+  { value: 'rgba(158,158,158,0.4)', key: null },
 ];
 
-// Fonts that exist on every phone, so entries look the same offline and after a restore.
-export const FONTS = [
-  { id: '', key: 'fontDefault', family: undefined },
-  { id: 'serif', key: 'fontSerif', family: 'serif' },
-  { id: 'naskh', key: 'fontNaskh', family: 'serif' },
-  { id: 'mono', key: 'fontMono', family: 'monospace' },
-  { id: 'hand', key: 'fontHand', family: undefined },
-];
+// The font menu: real fonts (Persian first, then English). Each name is shown in its own font. The text style
+// for a choice is applied by the editor page (see toolbarFonts.js, which sends the font into it when needed).
+export const FONTS = FONT_CATALOG;
 
 const GROUPS = [
   [
@@ -68,10 +79,15 @@ const GROUPS = [
  */
 export default function RichToolbar({ t, c, state = {}, onCommand, bottomInset = 0 }) {
   const [panel, setPanel] = useState(null); // null | 'color' | 'highlight' | 'font'
+  const [fontsReady, setFontsReady] = useState(false);
+  // the menu shows every name in its own font, so the fonts are loaded the first time it opens
+  useEffect(() => {
+    if (panel === 'font' && !fontsReady) loadNativeFonts(ALL_FONT_KEYS).then((ok) => ok && setFontsReady(true));
+  }, [panel, fontsReady]);
   const { premium, request } = usePremium();
   const current = state.color || '';
   const hl = (state.highlight || '').toLowerCase();
-  const pick = (cmd, arg) => { onCommand(cmd, arg); setPanel(null); };
+  const pick = (cmd, arg) => { onCommand(cmd, arg); }; // the panel stays open; tap its button again to close
   const toggle = (name) => setPanel((p) => (p === name ? null : name));
   return (
     <View
@@ -95,7 +111,7 @@ export default function RichToolbar({ t, c, state = {}, onCommand, bottomInset =
               testID={`color-${hex.slice(1)}`}
               onPress={() => pick('color', hex)}
               accessibilityRole="button"
-              accessibilityLabel={t[key]}
+              accessibilityLabel={(key && t[key]) || hex}
               accessibilityState={{ selected: current === hex }}
               style={[s.swatch, { backgroundColor: hex, borderColor: current === hex ? c.ink : 'transparent' }]}
             />
@@ -119,7 +135,7 @@ export default function RichToolbar({ t, c, state = {}, onCommand, bottomInset =
               testID={`highlight-${i}`}
               onPress={() => pick('highlight', value)}
               accessibilityRole="button"
-              accessibilityLabel={t[key]}
+              accessibilityLabel={(key && t[key]) || value}
               accessibilityState={{ selected: hl === value }}
               style={[s.swatch, { backgroundColor: value, borderColor: hl === value ? c.ink : c.line }]}
             />
@@ -127,24 +143,40 @@ export default function RichToolbar({ t, c, state = {}, onCommand, bottomInset =
         </View>
       ) : null}
       {panel === 'font' ? (
-        <View style={s.palette} testID="font-panel">
-          {FONTS.map(({ id, key, family }) => {
-            const on = (state.font || '') === id;
-            return (
-              <PressableScale
-                key={id || 'default'}
-                testID={`font-${id || 'default'}`}
-                onPress={() => pick('font', id)}
-                accessibilityRole="button"
-                accessibilityLabel={t[key]}
-                accessibilityState={{ selected: on }}
-                style={[s.fontChip, { borderColor: on ? c.sageDark : c.line, backgroundColor: on ? c.sage : c.card }]}
-              >
-                <Text style={{ color: on ? c.sageDark : c.ink, fontSize: 13, fontFamily: family }}>{t[key]}</Text>
-              </PressableScale>
-            );
-          })}
-        </View>
+        <ScrollView style={s.fontList} nestedScrollEnabled keyboardShouldPersistTaps="always" testID="font-panel">
+          <View style={s.fontWrap}>
+            <PressableScale
+              testID="font-default"
+              onPress={() => pick('font', '')}
+              accessibilityRole="button"
+              accessibilityLabel={t.fontDefault}
+              accessibilityState={{ selected: !state.font }}
+              style={[s.fontChip, { borderColor: !state.font ? c.sageDark : c.line, backgroundColor: !state.font ? c.sage : c.card }]}
+            >
+              <Text style={{ color: !state.font ? c.sageDark : c.ink, fontSize: 13 }}>{t.fontDefault}</Text>
+            </PressableScale>
+          </View>
+          {['fa', 'en'].map((script) => (
+            <View key={script} style={s.fontWrap}>
+              {FONT_CATALOG.filter((f) => f.script === script).map((f) => {
+                const on = (state.font || '') === f.key;
+                return (
+                  <PressableScale
+                    key={f.key}
+                    testID={`font-${f.key}`}
+                    onPress={() => pick('font', f.key)}
+                    accessibilityRole="button"
+                    accessibilityLabel={f.label}
+                    accessibilityState={{ selected: on }}
+                    style={[s.fontChip, { borderColor: on ? c.sageDark : c.line, backgroundColor: on ? c.sage : c.card }]}
+                  >
+                    <Text style={{ color: on ? c.sageDark : c.ink, fontSize: 15, lineHeight: f.key === 'nastaliq' ? 30 : undefined, fontFamily: fontsReady ? toolbarFamily(f.key, '', false) : undefined }}>{f.label}</Text>
+                  </PressableScale>
+                );
+              })}
+            </View>
+          ))}
+        </ScrollView>
       ) : null}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="always" contentContainerStyle={s.row}>
         {GROUPS.map((group, gi) => (
@@ -213,6 +245,8 @@ const s = StyleSheet.create({
   group: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingLeft: 4 },
   btn: { width: 42, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   palette: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 10, paddingHorizontal: 4, paddingTop: 2 },
+  fontList: { maxHeight: 190 },
+  fontWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 4, paddingBottom: 8 },
   fontChip: { borderWidth: 1.5, borderRadius: 99, paddingVertical: 6, paddingHorizontal: 12 },
   swatch: { width: 30, height: 30, borderRadius: 15, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
   dot: { position: 'absolute', bottom: 5, width: 14, height: 3, borderRadius: 2 },

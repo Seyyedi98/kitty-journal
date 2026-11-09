@@ -9,6 +9,8 @@
 // forces LTR/RTL on a block (dir attribute), so Persian, Arabic, Turkish and
 // English paragraphs lay out correctly in the same entry.
 
+import { FONT_CATALOG, FONT_STACKS } from './fontCatalog';
+
 const esc = (s) => JSON.stringify(String(s)).replace(/</g, '\\u003c').replace(/[\u2028\u2029]/g, (ch) => (ch === '\u2028' ? '\\u2028' : '\\u2029'));
 
 export function buildEditorHtml({ html = '', rtl = false, placeholder = '', minHeight = 220, colors = {}, fontSize = 15 }) {
@@ -269,15 +271,27 @@ function setDir(d){
     if(LISTS.test(b.tagName)){for(var i=0;i<b.children.length;i++)b.children[i].removeAttribute('dir');}
   });
 }
-var FONT_NAMES={serif:'serif',naskh:'Noto Naskh Arabic',mono:'monospace',hand:'cursive'};
+var FONT_NAMES=${JSON.stringify(FONT_STACKS)},FONT_CSS=${JSON.stringify(Object.fromEntries(FONT_CATALOG.map((f) => [f.key, f.css.toLowerCase()])))};
 function fontKeyOf(v){
   var x=String(v||'').toLowerCase();
+  for(var k in FONT_CSS){if(x.indexOf(FONT_CSS[k])>=0)return k;}
   if(x.indexOf('naskh')>=0)return 'naskh';
   if(x.indexOf('mono')>=0||x.indexOf('courier')>=0)return 'mono';
-  if(x.indexOf('cursive')>=0||x.indexOf('script')>=0)return 'hand';
-  if(x.indexOf('serif')>=0&&x.indexOf('sans')<0)return 'serif';
+  if(x.indexOf('cursive')>=0||x.indexOf('script')>=0)return 'caveat';
+  if(x.indexOf('serif')>=0&&x.indexOf('sans')<0)return 'lora';
   return '';
 }
+// Fonts arrive from the app in small pieces (a whole font in one message is too big for the web view).
+var FCH={};
+window.__fpart=function(id,s){FCH[id]=(FCH[id]||'')+s;};
+window.__fdone=function(id,name,weight){
+  var data=FCH[id]||'';delete FCH[id];
+  try{
+    var bin=atob(data),u=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);
+    var ff=new FontFace(name,u.buffer,{weight:String(weight)});
+    ff.load().then(function(f){document.fonts.add(f);post({t:'font',id:id,ok:true});}).catch(function(e){post({t:'font',id:id,ok:false,e:String(e)});});
+  }catch(e){post({t:'font',id:id,ok:false,e:String(e)});}
+};
 function setFont(key){
   try{document.execCommand('styleWithCSS',false,true);}catch(e){}
   document.execCommand('fontName',false,FONT_NAMES[key]||'system-ui');

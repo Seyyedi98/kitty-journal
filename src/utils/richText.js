@@ -4,6 +4,8 @@
 // The plain text is ALWAYS derived from the HTML here, so the two never disagree.
 // Pure functions (no DOM) so they run in the app, in Node tests and in the WebView host.
 
+import { FONT_CATALOG, FONT_STACKS as CATALOG_STACKS } from './fontCatalog';
+
 export const RICH_FORMAT_VERSION = 2;
 
 const BLOCKS = new Set(['p', 'h1', 'h2', 'h3', 'ul', 'ol', 'li', 'blockquote', 'hr']);
@@ -40,22 +42,20 @@ export function normalizeColor(v) {
   }
   return null;
 }
-// The editor offers a few font families that exist on every phone (no downloads, so
-// entries stay readable offline). Stored as canonical CSS stacks.
-export const FONT_STACKS = {
-  serif: 'serif',
-  naskh: "'Noto Naskh Arabic',serif",
-  mono: 'monospace',
-  hand: 'cursive',
-};
-/** Any CSS font-family value -> 'serif' | 'naskh' | 'mono' | 'hand', or null (= default font). */
+// The editor's font choices (utils/fontCatalog.js). Stored as canonical CSS stacks such as 'KJ_amiri',serif — the app
+// embeds the real font into the editor page and PDF when it is used (src/toolbarFonts.js).
+// Entries saved with the older plain stacks (serif / Noto Naskh Arabic / monospace / cursive) are upgraded when opened.
+export const FONT_STACKS = CATALOG_STACKS;
+/** Any CSS font-family value -> a font key from the catalog, or null (= default font). */
 export function fontKey(v) {
   const x = String(v || '').toLowerCase().replace(/&quot;|&#39;|["']/g, '');
-  if (!x || /\bsans/.test(x) || x.includes('system-ui')) return null;
+  if (!x || x.includes('system-ui')) return null;
+  for (const f of FONT_CATALOG) if (x.includes(f.css.toLowerCase())) return f.key;
+  if (/\bsans/.test(x)) return null;
   if (x.includes('naskh')) return 'naskh';
   if (x.includes('mono') || x.includes('courier')) return 'mono';
-  if (x.includes('cursive') || x.includes('script')) return 'hand';
-  if (x.includes('serif')) return 'serif';
+  if (x.includes('cursive') || x.includes('script')) return 'caveat';
+  if (x.includes('serif')) return 'lora';
   return null;
 }
 function fontOfAttrs(raw) {

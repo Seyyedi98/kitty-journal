@@ -115,6 +115,10 @@ export const MIGRATIONS = [
   `
   ALTER TABLE entries ADD COLUMN body_html TEXT;
   `,
+  // v6 — per-entry writing font (just the font's name, e.g. 'amiri'; NULL = the app's normal font)
+  `
+  ALTER TABLE entries ADD COLUMN font TEXT;
+  `,
 ];
 
 export const LATEST_VERSION = MIGRATIONS.length;
@@ -218,6 +222,7 @@ export async function runMigrations(db) {
     ['content_format_version', 'INTEGER NOT NULL DEFAULT 1'],
     ['uuid', 'TEXT'],
     ['body_html', 'TEXT'],
+    ['font', 'TEXT'],
   ].filter(([n]) => !cols.has(n));
   if (addCols.length) {
     await db.withTransactionAsync(async () => {
