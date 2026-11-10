@@ -174,6 +174,71 @@ export const THEMES = {
       muted: '#CDB1BE', dockBorder: '#523B49',
     },
   },
+  // Midnight Ink: deep indigo ink with gold, like writing a poem after midnight.
+  midnight: {
+    light: {
+      sage: '#E3DFF3', sageDark: '#3C2F7A', accent: '#463A8C', accentSoft: '#EFECF8', write: '#EEEAF7',
+      paper: '#F8F6FC', card: '#FFFFFF', line: '#DDD8EC', bg: '#EFECF6', cream: '#F8F6FC',
+      muted: '#6E6A85', dockBorder: '#DDD8EC', star: '#B8902F',
+    },
+    dark: {
+      ink: '#EFEAFB', sage: '#2E2850', sageDark: '#E2B857', accent: '#E2B857', accentSoft: '#26213F', write: '#292346',
+      paper: '#191630', card: '#221E3D', line: '#3A3563', bg: '#12101F', cream: '#191630',
+      muted: '#B3AECF', dockBorder: '#3A3563', star: '#E2B857', onAccent: '#14112A',
+    },
+  },
+  // Sepia: old paper and brown ink with a brick-red accent, a grandmother's diary.
+  sepia: {
+    light: {
+      ink: '#3B2A1E', sage: '#E6D3B0', sageDark: '#6B3A1F', accent: '#8C3B24', accentSoft: '#F1E3C9', write: '#F0DFC0',
+      rose: '#E8C9B0', paper: '#F4E8D2', card: '#FBF3E2', line: '#E0CDAA', bg: '#EBDDC2', cream: '#F4E8D2',
+      muted: '#7A6650', dockBorder: '#E0CDAA',
+    },
+    dark: {
+      sage: '#4A3A2A', sageDark: '#E8B98E', accent: '#E8B98E', accentSoft: '#3A2E23', write: '#3D2F24',
+      paper: '#2A211A', card: '#342A21', line: '#4F4033', bg: '#211A14', cream: '#2A211A',
+      muted: '#C7B49C', dockBorder: '#4F4033',
+    },
+  },
+  // Aurora: northern lights, teal and mint glowing on a dark polar night.
+  aurora: {
+    light: {
+      sage: '#D5F0EA', sageDark: '#0F6B66', accent: '#12776F', accentSoft: '#E6F6F3', write: '#E7F0F6',
+      lavender: '#E4DDF4', paper: '#F5FBFA', card: '#FDFFFF', line: '#D2E6E3', bg: '#EAF4F3', cream: '#F5FBFA',
+      muted: '#5F7472', dockBorder: '#D2E6E3',
+    },
+    dark: {
+      sage: '#183A3A', sageDark: '#5FE3C0', accent: '#5FE3C0', accentSoft: '#14282B', write: '#1A2A38',
+      rose: '#3A2B4A', lavender: '#2C2748', paper: '#101C22', card: '#16262D', line: '#2A4048', bg: '#0B1418',
+      cream: '#101C22', muted: '#9CB8BC', dockBorder: '#2A4048', onAccent: '#0B1418',
+    },
+  },
+  // Saffron: warm cream, saffron orange and a little pistachio.
+  saffron: {
+    light: {
+      sage: '#FFE3B0', sageDark: '#8A4A00', accent: '#A35508', accentSoft: '#FFF1D6', write: '#FDEBCB',
+      rose: '#F3D3B0', lavender: '#E3EDCB', paper: '#FFF9EC', card: '#FFFDF6', line: '#F0DEB8', bg: '#FBF0D8',
+      cream: '#FFF9EC', muted: '#7A6A4A', dockBorder: '#F0DEB8',
+    },
+    dark: {
+      sage: '#4A3716', sageDark: '#FFC76B', accent: '#FFC76B', accentSoft: '#3A2D18', write: '#40331A',
+      paper: '#2B2317', card: '#352C1D', line: '#54452A', bg: '#211B11', cream: '#2B2317',
+      muted: '#CDBB94', dockBorder: '#54452A',
+    },
+  },
+  // Mono: black, white and grey with one sharp pink accent. Clean and modern.
+  mono: {
+    light: {
+      ink: '#111111', muted: '#5E5E5E', sage: '#EDEDED', sageDark: '#1A1A1A', accent: '#D6006F', accentSoft: '#F7E7F0',
+      write: '#F0F0F0', rose: '#F3DCE8', lavender: '#ECECEC', paper: '#FAFAFA', card: '#FFFFFF', line: '#E0E0E0',
+      bg: '#F2F2F2', cream: '#FAFAFA', dockBorder: '#E0E0E0',
+    },
+    dark: {
+      ink: '#F2F2F2', sage: '#2A2A2A', sageDark: '#F2F2F2', accent: '#FF5CAB', accentSoft: '#2A1A23', write: '#222222',
+      rose: '#3A2631', lavender: '#2A2A2A', paper: '#161616', card: '#1F1F1F', line: '#383838', bg: '#0E0E0E',
+      cream: '#161616', muted: '#A8A8A8', dockBorder: '#383838', onAccent: '#0E0E0E',
+    },
+  },
   ocean: {
     light: {
       sage: '#D8E8EC', sageDark: '#2F6674', accent: '#33707F', accentSoft: '#EAF3F5', write: '#EBF2F2',

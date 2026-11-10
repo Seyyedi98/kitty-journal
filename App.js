@@ -1,7 +1,13 @@
 import DialogHost from "./src/components/DialogHost";
-import MoodFace from './src/components/MoodFace';
+import MoodFace from "./src/components/MoodFace";
 import { Dialog } from "./src/platform/dialog";
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   AppState,
   BackHandler,
@@ -81,8 +87,23 @@ import FilterBar, {
   applyFilters,
   hasActiveFilters,
 } from "./src/components/FilterBar";
-import { BottomInsetContext, ScrollView, Text, TextInput, setUiFontsLoaded, setUiLanguage, setUiLatinFont, setUiPersianFont } from "./src/ui";
-import { DEFAULT_THEME, MOODS, THEME_KEYS, buildPalette, isLightPalette } from "./src/theme";
+import {
+  BottomInsetContext,
+  ScrollView,
+  Text,
+  TextInput,
+  setUiFontsLoaded,
+  setUiLanguage,
+  setUiLatinFont,
+  setUiPersianFont,
+} from "./src/ui";
+import {
+  DEFAULT_THEME,
+  MOODS,
+  THEME_KEYS,
+  buildPalette,
+  isLightPalette,
+} from "./src/theme";
 import { runMigrations } from "./src/db/migrations";
 import {
   listEntries,
@@ -121,10 +142,14 @@ import OnboardingScreen from "./src/screens/OnboardingScreen";
 import InsightsScreen from "./src/screens/InsightsScreen";
 import AppLockScreen from "./src/screens/AppLockScreen";
 import { useAppLock } from "./src/hooks/useAppLock";
-import { initNotifications, onReminderTapped } from "./src/platform/notifications";
+import {
+  initNotifications,
+  onReminderTapped,
+} from "./src/platform/notifications";
 import { syncReminders } from "./src/services/reminderSync";
 import { numberFormatter } from "./src/utils/format";
 import { EMOTIONS } from "./src/utils/emotions";
+import { TurboModuleRegistry } from "react-native";
 
 const HOME_CAT = require("./assets/images/home-cat.png"); // 560 x 337
 const APP_LOGO = require("./assets/images/logo.png"); // the app icon, shown in the top bar
@@ -145,7 +170,8 @@ const UNDO_MS = 7000;
 function useToday() {
   const [today, setToday] = useState(() => dateKey());
   useEffect(() => {
-    const check = () => setToday((prev) => (dateKey() === prev ? prev : dateKey()));
+    const check = () =>
+      setToday((prev) => (dateKey() === prev ? prev : dateKey()));
     const sub = AppState.addEventListener("change", (state) => {
       if (state === "active") check();
     });
@@ -174,13 +200,21 @@ function AppShell() {
   const [latinFont, setLatinFont] = useState("dmsans"); // chosen English / Turkish font
   useEffect(() => {
     let off = false;
-    loadFont(faFont).then((ok) => { if (ok && !off) setUiPersianFont(faFont); });
-    return () => { off = true; };
+    loadFont(faFont).then((ok) => {
+      if (ok && !off) setUiPersianFont(faFont);
+    });
+    return () => {
+      off = true;
+    };
   }, [faFont]);
   useEffect(() => {
     let off = false;
-    loadFont(latinFont).then((ok) => { if (ok && !off) setUiLatinFont(latinFont); });
-    return () => { off = true; };
+    loadFont(latinFont).then((ok) => {
+      if (ok && !off) setUiLatinFont(latinFont);
+    });
+    return () => {
+      off = true;
+    };
   }, [latinFont]);
   const db = useSQLiteContext();
   const lock = useAppLock(db);
@@ -233,12 +267,22 @@ function AppShell() {
   const dark =
     appearance === "dark" ||
     (appearance === "system" && systemScheme === "dark");
-  const c = useMemo(() => buildPalette(effectiveTheme(theme, premium), dark), [theme, premium, dark]);
+  const c = useMemo(
+    () => buildPalette(effectiveTheme(theme, premium), dark),
+    [theme, premium, dark],
+  );
 
   // Home-screen widgets follow language, calendar and theme.
   useEffect(() => {
     if (!ready) return;
-    refreshWidgets({ language, calendar: calendarType, theme, appearance, premium, systemDark: systemScheme === "dark" });
+    refreshWidgets({
+      language,
+      calendar: calendarType,
+      theme,
+      appearance,
+      premium,
+      systemDark: systemScheme === "dark",
+    });
   }, [ready, language, calendarType, theme, appearance, premium, systemScheme]);
   const isTablet = shortestSide >= 600;
   const isLandscapeTablet = isTablet && width > height;
@@ -269,7 +313,9 @@ function AppShell() {
         if (saved.onboardingDone !== true) {
           const hasData =
             Boolean(saved.language) ||
-            Boolean(await db.getFirstAsync("SELECT 1 AS x FROM entries LIMIT 1"));
+            Boolean(
+              await db.getFirstAsync("SELECT 1 AS x FROM entries LIMIT 1"),
+            );
           if (cancelled) return;
           if (hasData) saveSetting(db, "onboardingDone", true).catch(() => {});
           else setShowOnboarding(true);
@@ -286,9 +332,14 @@ function AppShell() {
         setAppearance(look);
         if (THEME_KEYS.includes(saved.theme)) setTheme(saved.theme);
         if (PERSIAN_FONT_KEYS.includes(saved.faFont)) setFaFont(saved.faFont);
-        if (LATIN_FONT_KEYS.includes(saved.latinFont)) setLatinFont(saved.latinFont);
+        if (LATIN_FONT_KEYS.includes(saved.latinFont))
+          setLatinFont(saved.latinFont);
         const effective =
-          cal === "default" ? (lang === "fa" ? "solarHijri" : "gregorian") : cal;
+          cal === "default"
+            ? lang === "fa"
+              ? "solarHijri"
+              : "gregorian"
+            : cal;
         setCalendarMonth(getCalendarParts(dateKey(), effective));
         await refresh();
       } catch (error) {
@@ -348,9 +399,11 @@ function AppShell() {
   // Tapping an entry anywhere opens a read-only preview first; Edit goes on to the editor
   // (and Back from the editor returns to the preview).
   const openPreview = (entry) => setPreviewId(entry.id);
-  const previewEntry = previewId == null ? null : entries.find((e) => e.id === previewId) || null;
+  const previewEntry =
+    previewId == null ? null : entries.find((e) => e.id === previewId) || null;
   useEffect(() => {
-    if (previewId != null && ready && !previewEntry && !editorVisible) setPreviewId(null);
+    if (previewId != null && ready && !previewEntry && !editorVisible)
+      setPreviewId(null);
   }, [previewId, previewEntry, ready, editorVisible]);
   // Reminders: keep the schedule in the app language, and open a new entry when one is tapped.
   const openNewRef = useRef(openNew);
@@ -488,7 +541,20 @@ function AppShell() {
         exitAsked.current = Date.now();
         Dialog.alert(t.exitAppTitle, t.exitAppMessage, [
           { text: t.cancel, style: "cancel" },
-          { text: t.exitAppButton, style: "destructive", onPress: () => BackHandler.exitApp() },
+          {
+            text: t.exitAppButton,
+            style: "destructive",
+            onPress: () => {
+              if (TurboModuleRegistry.get("RNExitApp")) {
+                try {
+                  require("react-native-exit-app").default.exitApp();
+                  return;
+                } catch {}
+              }
+              BackHandler.exitApp();
+            },
+          },
+          ,
         ]);
       }
       return true;
@@ -547,7 +613,12 @@ function AppShell() {
         rtl && styles.rowReverse,
       ]}
     >
-      <Image source={APP_LOGO} style={styles.brandLogo} resizeMode="contain" accessibilityIgnoresInvertColors />
+      <Image
+        source={APP_LOGO}
+        style={styles.brandLogo}
+        resizeMode="contain"
+        accessibilityIgnoresInvertColors
+      />
       <Text style={[styles.brand, { color: c.ink }]}>Kitty Journal</Text>
       <View style={{ flex: 1 }} />
       <Text
@@ -775,9 +846,7 @@ function AppShell() {
       />
     );
   else if (tab === "memories" && !premium)
-    content = (
-      <MemoriesTeaser t={t} c={c} rtl={rtl} />
-    );
+    content = <MemoriesTeaser t={t} c={c} rtl={rtl} />;
   else if (tab === "memories")
     content = (
       <MemoriesScreen
@@ -833,14 +902,27 @@ function AppShell() {
     [premium],
   );
   const promptNode = (
-    <PremiumPrompt feature={premiumAsk} onClose={() => setPremiumAsk(null)} onSee={openPremium} canOpen={!showOnboarding} t={t} c={c} rtl={rtl} />
+    <PremiumPrompt
+      feature={premiumAsk}
+      onClose={() => setPremiumAsk(null)}
+      onSee={openPremium}
+      canOpen={!showOnboarding}
+      t={t}
+      c={c}
+      rtl={rtl}
+    />
   );
 
-  if (!lock.ready) return <View style={[styles.safeRoot, { backgroundColor: c.bg }]} />;
+  if (!lock.ready)
+    return <View style={[styles.safeRoot, { backgroundColor: c.bg }]} />;
   if (lock.locked)
     return (
       <View style={[styles.safeRoot, { backgroundColor: c.bg }]}>
-        <ExpoStatusBar style={dark ? "light" : "dark"} backgroundColor={c.bg} translucent={false} />
+        <ExpoStatusBar
+          style={dark ? "light" : "dark"}
+          backgroundColor={c.bg}
+          translucent={false}
+        />
         <LockScreen lock={lock} t={t} c={c} rtl={rtl} insets={insets} />
       </View>
     );
@@ -848,192 +930,208 @@ function AppShell() {
   if (showOnboarding && ready)
     return (
       <PremiumContext.Provider value={premiumCtx}>
-      <View style={[styles.safeRoot, { backgroundColor: c.bg }]}>
-        <ExpoStatusBar style={dark ? "light" : "dark"} backgroundColor={c.bg} translucent={false} />
-        <OnboardingScreen
-          db={db}
-          t={t}
-          c={c}
-          rtl={rtl}
-          insets={insets}
-          runExternal={lock.runExternal}
-          lock={lock}
-          language={language}
-          changeLanguage={changeLanguage}
-          calendarType={calendarType}
-          changeCalendar={changeCalendar}
-          appearance={appearance}
-          setAppearance={changeAppearance}
-          theme={theme}
-          setTheme={changeTheme}
-          dark={dark}
-          onFinish={() => {
-            persistSetting("onboardingDone", true);
-            setShowOnboarding(false);
-          }}
-        />
-        {promptNode}
-      </View>
+        <View style={[styles.safeRoot, { backgroundColor: c.bg }]}>
+          <ExpoStatusBar
+            style={dark ? "light" : "dark"}
+            backgroundColor={c.bg}
+            translucent={false}
+          />
+          <OnboardingScreen
+            db={db}
+            t={t}
+            c={c}
+            rtl={rtl}
+            insets={insets}
+            runExternal={lock.runExternal}
+            lock={lock}
+            language={language}
+            changeLanguage={changeLanguage}
+            calendarType={calendarType}
+            changeCalendar={changeCalendar}
+            appearance={appearance}
+            setAppearance={changeAppearance}
+            theme={theme}
+            setTheme={changeTheme}
+            dark={dark}
+            onFinish={() => {
+              persistSetting("onboardingDone", true);
+              setShowOnboarding(false);
+            }}
+          />
+          {promptNode}
+        </View>
       </PremiumContext.Provider>
     );
 
   return (
     <PremiumContext.Provider value={premiumCtx}>
-    <View
-      style={[
-        styles.safeRoot,
-        { backgroundColor: c.bg, paddingTop: insets.top },
-      ]}
-    >
-      <ExpoStatusBar
-        style={dark ? "light" : "dark"}
-        backgroundColor={c.bg}
-        translucent={false}
-      />
       <View
         style={[
-          styles.appFrame,
-          isTablet && styles.tabletFrame,
-          { backgroundColor: c.bg, paddingBottom: isTablet ? 24 : 0 },
+          styles.safeRoot,
+          { backgroundColor: c.bg, paddingTop: insets.top },
         ]}
       >
-        <View style={appStyles}>
-          {topBar}
-          <View
-            style={[
-              styles.bodyRow,
-              isLandscapeTablet && styles.landscapeBody,
-              rtl && isLandscapeTablet && styles.rowReverse,
-            ]}
-          >
-            {isLandscapeTablet && <View style={{ width: 88, flexShrink: 0 }} />}
-            {isLandscapeTablet && (
+        <ExpoStatusBar
+          style={dark ? "light" : "dark"}
+          backgroundColor={c.bg}
+          translucent={false}
+        />
+        <View
+          style={[
+            styles.appFrame,
+            isTablet && styles.tabletFrame,
+            { backgroundColor: c.bg, paddingBottom: isTablet ? 24 : 0 },
+          ]}
+        >
+          <View style={appStyles}>
+            {topBar}
+            <View
+              style={[
+                styles.bodyRow,
+                isLandscapeTablet && styles.landscapeBody,
+                rtl && isLandscapeTablet && styles.rowReverse,
+              ]}
+            >
+              {isLandscapeTablet && (
+                <View style={{ width: 88, flexShrink: 0 }} />
+              )}
+              {isLandscapeTablet && (
+                <Dock
+                  activeTab={settingsOpen ? "settings" : tab}
+                  onTabPress={openTab}
+                  colors={c}
+                  vertical
+                  safeBottom={insets.bottom}
+                  rtl={rtl}
+                  labels={dockLabels}
+                />
+              )}
+              <View
+                style={[
+                  styles.contentArea,
+                  {
+                    paddingHorizontal: pagePadding,
+                    maxWidth: contentWidth,
+                    // Portrait: content runs to the bottom edge and the dock floats over it
+                    // (each page's ScrollView adds the dock clearance itself).
+                    paddingBottom: isLandscapeTablet ? 24 + insets.bottom : 0,
+                  },
+                ]}
+              >
+                <Animated.View
+                  key={subScreen || (settingsOpen ? "settings" : tab)}
+                  entering={fadeIn(0, 240)}
+                  style={{ flex: 1 }}
+                >
+                  <BottomInsetContext.Provider
+                    value={isLandscapeTablet ? 0 : 96 + insets.bottom}
+                  >
+                    {content}
+                  </BottomInsetContext.Provider>
+                </Animated.View>
+              </View>
+            </View>
+            {!editorVisible && !isLandscapeTablet && (
               <Dock
-                activeTab={settingsOpen ? "settings" : tab}
+                activeTab={settingsOpen ? "" : tab}
                 onTabPress={openTab}
                 colors={c}
-                vertical
-                safeBottom={insets.bottom}
                 rtl={rtl}
+                safeBottom={insets.bottom}
                 labels={dockLabels}
               />
             )}
-            <View
-              style={[
-                styles.contentArea,
-                {
-                  paddingHorizontal: pagePadding,
-                  maxWidth: contentWidth,
-                  // Portrait: content runs to the bottom edge and the dock floats over it
-                  // (each page's ScrollView adds the dock clearance itself).
-                  paddingBottom: isLandscapeTablet ? 24 + insets.bottom : 0,
-                },
-              ]}
-            >
+            {undo && (
               <Animated.View
-                key={subScreen || (settingsOpen ? "settings" : tab)}
-                entering={fadeIn(0, 240)}
-                style={{ flex: 1 }}
+                entering={slideInUp()}
+                exiting={slideOutDown()}
+                accessibilityLiveRegion="polite"
+                style={[
+                  styles.undoBar,
+                  {
+                    backgroundColor: c.ink,
+                    bottom: (isLandscapeTablet ? 90 : 160) + insets.bottom,
+                  },
+                  rtl && styles.rowReverse,
+                ]}
               >
-                <BottomInsetContext.Provider value={isLandscapeTablet ? 0 : 96 + insets.bottom}>
-                  {content}
-                </BottomInsetContext.Provider>
-              </Animated.View>
-            </View>
-          </View>
-          {!editorVisible && !isLandscapeTablet && (
-            <Dock
-              activeTab={settingsOpen ? "" : tab}
-              onTabPress={openTab}
-              colors={c}
-              rtl={rtl}
-              safeBottom={insets.bottom}
-              labels={dockLabels}
-            />
-          )}
-          {undo && (
-            <Animated.View
-              entering={slideInUp()}
-              exiting={slideOutDown()}
-              accessibilityLiveRegion="polite"
-              style={[
-                styles.undoBar,
-                {
-                  backgroundColor: c.ink,
-                  bottom: (isLandscapeTablet ? 90 : 160) + insets.bottom,
-                },
-                rtl && styles.rowReverse,
-              ]}
-            >
-              <Text style={{ color: c.paper, fontSize: 12, flex: 1 }}>
-                {t.entryDeleted}
-              </Text>
-              <Pressable
-                onPress={undoDelete}
-                accessibilityRole="button"
-                style={styles.undoButton}
-              >
-                <Text style={{ color: c.sage, fontWeight: "700", fontSize: 12 }}>
-                  {t.undo}
+                <Text style={{ color: c.paper, fontSize: 12, flex: 1 }}>
+                  {t.entryDeleted}
                 </Text>
-              </Pressable>
-            </Animated.View>
-          )}
-          {!settingsOpen && ready && !loadError && tab !== "memories" && tab !== "insights" && (
-            <PressableScale
-              entering={zoomIn(250)}
-              scaleTo={0.9}
-              onPress={() => openNew(tab === "calendar" ? selectedDate : today)}
-              style={[
-                styles.floatingAdd,
-                {
-                  backgroundColor: c.accent,
-                  bottom: (isLandscapeTablet ? 25 : 92) + insets.bottom,
-                  right: rtl ? undefined : isTablet ? 34 : 20,
-                  left: rtl ? (isTablet ? 34 : 20) : undefined,
-                },
-              ]}
-              accessibilityLabel={t.newEntry}
-            >
-              <Plus size={23} color={c.onAccent} />
-            </PressableScale>
-          )}
+                <Pressable
+                  onPress={undoDelete}
+                  accessibilityRole="button"
+                  style={styles.undoButton}
+                >
+                  <Text
+                    style={{ color: c.sage, fontWeight: "700", fontSize: 12 }}
+                  >
+                    {t.undo}
+                  </Text>
+                </Pressable>
+              </Animated.View>
+            )}
+            {!settingsOpen &&
+              ready &&
+              !loadError &&
+              tab !== "memories" &&
+              tab !== "insights" && (
+                <PressableScale
+                  entering={zoomIn(250)}
+                  scaleTo={0.9}
+                  onPress={() =>
+                    openNew(tab === "calendar" ? selectedDate : today)
+                  }
+                  style={[
+                    styles.floatingAdd,
+                    {
+                      backgroundColor: c.accent,
+                      bottom: (isLandscapeTablet ? 25 : 92) + insets.bottom,
+                      right: rtl ? undefined : isTablet ? 34 : 20,
+                      left: rtl ? (isTablet ? 34 : 20) : undefined,
+                    },
+                  ]}
+                  accessibilityLabel={t.newEntry}
+                >
+                  <Plus size={23} color={c.onAccent} />
+                </PressableScale>
+              )}
+          </View>
         </View>
+        <EntryPreview
+          visible={Boolean(previewEntry) && !editorVisible}
+          entry={previewEntry}
+          db={db}
+          onClose={() => setPreviewId(null)}
+          onEdit={openEdit}
+          t={t}
+          c={c}
+          rtl={rtl}
+          language={language}
+          calendar={effectiveCalendar}
+          insets={insets}
+          num={numberFormatter(language)}
+        />
+        <EditorModal
+          runExternal={lock.runExternal}
+          visible={editorVisible}
+          entry={editing}
+          initialDate={editorDate}
+          onClose={closeEditor}
+          onChanged={refresh}
+          onDeleted={onEntryDeleted}
+          allTags={allTags}
+          t={t}
+          c={c}
+          rtl={rtl}
+          language={language}
+          calendar={effectiveCalendar}
+          dark={dark}
+          insets={insets}
+        />
+        <DialogHost t={t} c={c} rtl={rtl} />
+        {promptNode}
       </View>
-      <EntryPreview
-        visible={Boolean(previewEntry) && !editorVisible}
-        entry={previewEntry}
-        db={db}
-        onClose={() => setPreviewId(null)}
-        onEdit={openEdit}
-        t={t}
-        c={c}
-        rtl={rtl}
-        language={language}
-        calendar={effectiveCalendar}
-        insets={insets}
-        num={numberFormatter(language)}
-      />
-      <EditorModal
-        runExternal={lock.runExternal}
-        visible={editorVisible}
-        entry={editing}
-        initialDate={editorDate}
-        onClose={closeEditor}
-        onChanged={refresh}
-        onDeleted={onEntryDeleted}
-        allTags={allTags}
-        t={t}
-        c={c}
-        rtl={rtl}
-        language={language}
-        calendar={effectiveCalendar}
-        dark={dark}
-        insets={insets}
-      />
-      <DialogHost t={t} c={c} rtl={rtl} />
-      {promptNode}
-    </View>
     </PremiumContext.Provider>
   );
 }
@@ -1059,7 +1157,10 @@ function HomeScreen({
   onFavorite,
   isTablet,
 }) {
-  const stories = useMemo(() => buildStories(entries, today, calendar), [entries, today, calendar]);
+  const stories = useMemo(
+    () => buildStories(entries, today, calendar),
+    [entries, today, calendar],
+  );
   const [storyGroup, setStoryGroup] = useState(null);
   const db = useSQLiteContext();
   const insets = useSafeAreaInsets();
@@ -1119,8 +1220,28 @@ function HomeScreen({
         ]}
       >
         <View style={styles.homeColumn}>
-          {!isSearching && <StoriesRow groups={stories} db={db} onOpen={setStoryGroup} t={t} c={c} rtl={rtl} />}
-          <StoryViewer group={storyGroup} db={db} onClose={() => setStoryGroup(null)} onOpenEntry={onEdit} t={t} c={c} rtl={rtl} language={language} calendar={calendar} insets={insets} />
+          {!isSearching && (
+            <StoriesRow
+              groups={stories}
+              db={db}
+              onOpen={setStoryGroup}
+              t={t}
+              c={c}
+              rtl={rtl}
+            />
+          )}
+          <StoryViewer
+            group={storyGroup}
+            db={db}
+            onClose={() => setStoryGroup(null)}
+            onOpenEntry={onEdit}
+            t={t}
+            c={c}
+            rtl={rtl}
+            language={language}
+            calendar={calendar}
+            insets={insets}
+          />
           <Animated.View
             entering={fadeInDown(0)}
             style={[styles.welcomeRow, rtl && styles.rowReverse]}
@@ -1155,7 +1276,10 @@ function HomeScreen({
             </View>
             <Image
               source={HOME_CAT}
-              style={{ width: isTablet ? 190 : 128, height: Math.round((isTablet ? 190 : 128) * 337 / 560) }}
+              style={{
+                width: isTablet ? 190 : 128,
+                height: Math.round(((isTablet ? 190 : 128) * 337) / 560),
+              }}
               resizeMode="contain"
               accessibilityIgnoresInvertColors
             />
@@ -1428,9 +1552,7 @@ function CalendarScreen({
                   {dayText}
                 </Text>
                 <View style={styles.dayMarks}>
-                  {dayMood ? (
-                    <MoodFace mood={dayMood.key} size={13} />
-                  ) : null}
+                  {dayMood ? <MoodFace mood={dayMood.key} size={13} /> : null}
                   {hasEntry ? (
                     <View
                       style={[styles.dayDot, { backgroundColor: c.accent }]}
@@ -1454,7 +1576,9 @@ function CalendarScreen({
           })}
         </Text>
         {dailyMoods[selectedDate] ? (
-          <Text style={[styles.calendarNote, { color: c.sageDark, marginTop: 4 }]}>
+          <Text
+            style={[styles.calendarNote, { color: c.sageDark, marginTop: 4 }]}
+          >
             {t.dailyMoodLabel}: {t[dailyMoods[selectedDate]]}
           </Text>
         ) : null}
@@ -1518,7 +1642,11 @@ function EntryList({
             rtl && styles.rowReverse,
           ]}
         >
-          <PressableScale scaleTo={0.985} onPress={() => onEdit(entry)} style={{ flex: 1 }}>
+          <PressableScale
+            scaleTo={0.985}
+            onPress={() => onEdit(entry)}
+            style={{ flex: 1 }}
+          >
             <Text
               style={[
                 styles.entryDate,
@@ -1558,7 +1686,9 @@ function EntryList({
                 {entry.tags.map((tag) => `#${tag.name}`).join("  ")}
               </Text>
             ) : null}
-            {entry.attachmentCount || entry.location || entry.emotions?.length ? (
+            {entry.attachmentCount ||
+            entry.location ||
+            entry.emotions?.length ? (
               <View style={[styles.entryMeta, rtl && styles.rowReverse]}>
                 {entry.attachmentCount ? (
                   <View style={[styles.metaItem, rtl && styles.rowReverse]}>
@@ -1569,9 +1699,18 @@ function EntryList({
                   </View>
                 ) : null}
                 {entry.location ? (
-                  <View style={[styles.metaItem, rtl && styles.rowReverse, { flexShrink: 1 }]}>
+                  <View
+                    style={[
+                      styles.metaItem,
+                      rtl && styles.rowReverse,
+                      { flexShrink: 1 },
+                    ]}
+                  >
                     <MapPin size={11} color={c.muted} />
-                    <Text numberOfLines={1} style={{ color: c.muted, fontSize: 10, flexShrink: 1 }}>
+                    <Text
+                      numberOfLines={1}
+                      style={{ color: c.muted, fontSize: 10, flexShrink: 1 }}
+                    >
                       {entry.location.name || entry.location.address || ""}
                     </Text>
                   </View>
@@ -1587,9 +1726,7 @@ function EntryList({
           {entry.pinned ? (
             <Pin size={14} color={c.sageDark} fill={c.sageDark} />
           ) : null}
-          {entry.mood ? (
-            <MoodFace mood={entry.mood} size={22} />
-          ) : null}
+          {entry.mood ? <MoodFace mood={entry.mood} size={22} /> : null}
           <PressableScale
             scaleTo={0.8}
             onPress={() => onFavorite(entry)}
@@ -1972,7 +2109,12 @@ const styles = StyleSheet.create({
   distLabel: { fontSize: 10, width: 58 },
   distTrack: { flex: 1, height: 8, borderRadius: 4, overflow: "hidden" },
   distFill: { height: 8, borderRadius: 4 },
-  distCount: { fontSize: 11, fontWeight: "600", minWidth: 22, textAlign: "center" },
+  distCount: {
+    fontSize: 11,
+    fontWeight: "600",
+    minWidth: 22,
+    textAlign: "center",
+  },
   undoBar: {
     position: "absolute",
     left: 16,
@@ -1986,7 +2128,12 @@ const styles = StyleSheet.create({
     elevation: 8,
     zIndex: 40,
   },
-  undoButton: { paddingVertical: 6, paddingHorizontal: 8, minHeight: 32, justifyContent: "center" },
+  undoButton: {
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    minHeight: 32,
+    justifyContent: "center",
+  },
   floatingAdd: {
     position: "absolute",
     width: 48,

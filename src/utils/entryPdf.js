@@ -1,6 +1,7 @@
 // Builds the printable HTML for one entry in a chosen template (used for the styled PDF).
 // Pure: no DOM, no native modules, so it runs in the app and in Node tests.
 import { escapeHtml, sanitizeHtml } from './richText';
+import { CAT_BORDERS } from './catBorders';
 
 export const TEMPLATES = [
   { key: 'classic', label: 'tplClassic', swatch: ['#FBF6EA', '#8B5A2B'] },
@@ -14,6 +15,11 @@ export const TEMPLATES = [
   { key: 'summer', label: 'tplSummer', swatch: ['#FFF0B8', '#0E7C86'] },
   { key: 'forest', label: 'tplForest', swatch: ['#E1EBDB', '#2F6B3B'] },
   { key: 'sunset', label: 'tplSunset', swatch: ['#FBE0DA', '#B03A6A'] },
+  { key: 'sepia', label: 'tplSepia', swatch: ['#F4E8D2', '#8C3B24'] },
+  { key: 'aurora', label: 'tplAurora', swatch: ['#0B1418', '#5FE3C0'] },
+  { key: 'saffron', label: 'tplSaffron', swatch: ['#FFE9B8', '#A35508'] },
+  { key: 'mono', label: 'tplMono', swatch: ['#F2F2F2', '#D6006F'] },
+  { key: 'kitty', label: 'tplKitty', swatch: ['#FFFBF2', '#E8A5B5'] },
 ];
 export const DEFAULT_TEMPLATE = 'classic';
 
@@ -29,6 +35,11 @@ const VARS = {
   forest: { bg: '#E1EBDB', paper: '#FBFDF8', ink: '#24351F', muted: '#61755B', accent: '#2F6B3B', line: '#D3E1CF', font: "Georgia, 'Times New Roman', serif" },
   sunset: { bg: '#FBDFD8', paper: '#FFFAF8', ink: '#4A2E3A', muted: '#80626E', accent: '#B03A6A', line: '#F2DAD9', font: "'Trebuchet MS', 'Segoe UI', Arial, sans-serif" },
   midnight: { bg: '#1D2433', paper: '#242C3E', ink: '#EEF0F6', muted: '#9AA3B8', accent: '#D9B36C', line: '#3A4460', font: "Georgia, 'Times New Roman', serif" },
+  sepia: { bg: '#EBDDC2', paper: '#F9F0DD', ink: '#3B2A1E', muted: '#7A6650', accent: '#8C3B24', line: '#E0CDAA', font: "Georgia, 'Times New Roman', serif" },
+  aurora: { bg: '#0B1418', paper: '#12222A', ink: '#E8F6F4', muted: '#9CB8BC', accent: '#5FE3C0', line: '#2A4048', font: "'Helvetica Neue', Arial, sans-serif" },
+  saffron: { bg: '#FBF0D8', paper: '#FFFAEE', ink: '#43321A', muted: '#7A6A4A', accent: '#A35508', line: '#F0DEB8', font: "'Trebuchet MS', 'Segoe UI', Arial, sans-serif" },
+  kitty: { bg: '#F7EEE2', paper: '#FFFCF6', ink: '#4A3A32', muted: '#8C7A6C', accent: '#C9788C', line: '#EFDFCF', font: "'Trebuchet MS', 'Segoe UI', Arial, sans-serif" },
+  mono: { bg: '#F2F2F2', paper: '#FFFFFF', ink: '#111111', muted: '#5E5E5E', accent: '#D6006F', line: '#E0E0E0', font: "'Helvetica Neue', Arial, sans-serif" },
 };
 
 const CSS = (v, key, rtl) => `
@@ -174,6 +185,65 @@ h1.title { color: ${v.accent}; font-weight: 400; letter-spacing: .03em; }
 .chip { border-color: ${v.accent}; color: ${v.accent}; }
 .photos img { border: 1px solid ${v.accent}; padding: 4px; background: ${v.bg}; }
 .body hr { border-top-color: ${v.accent}; }`,
+  sepia: `html, body { background: ${v.bg}; }
+.frame { border: 1px solid #C9B089; box-shadow: inset 0 0 60px rgba(140,90,40,.18), 0 2px 10px rgba(80,50,20,.18); border-radius: 3px; }
+.head { text-align: center; border-bottom: 1px double ${v.accent}; padding-bottom: 8px; margin-bottom: 18px; }
+.date { color: ${v.accent}; font-style: italic; font-size: 14px; letter-spacing: .05em; }
+h1.title { font-weight: 400; font-style: italic; font-size: 34px; }
+.meta { justify-content: center; }
+.chip { background: #F1E3C9; border: 1px solid #D8C29A; color: ${v.accent}; font-style: italic; }
+.photos img { border: 8px solid #FFF8EA; box-shadow: 0 2px 8px rgba(70,40,10,.3); filter: sepia(.45) contrast(.96); }
+.body hr { border-top: 1px dashed #C9B089; }
+.foot { color: ${v.accent}; font-style: italic; }`,
+  aurora: `.frame { border-radius: 22px; border: 1px solid ${v.line}; overflow: hidden; box-shadow: 0 0 24px rgba(95,227,192,.18); }
+.frame::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 14px; background: linear-gradient(90deg, #5FE3C0, #3BB5E8 50%, #9B7BFF); }
+.head { text-align: center; }
+.date { color: ${v.accent}; letter-spacing: .16em; text-transform: uppercase; font-size: 12px; font-weight: 600; }
+h1.title { color: ${v.ink}; font-weight: 700; font-size: 36px; }
+.head::after { content: '✦  ·  ✦'; display: block; color: ${v.accent}; letter-spacing: .4em; font-size: 13px; margin-top: 4px; }
+.meta { justify-content: center; }
+.chip { background: #173038; border: 1px solid #2F5560; color: ${v.accent}; }
+.photos img { border-radius: 14px; border: 1px solid ${v.line}; }
+.body blockquote { background: #173038; border-radius: 8px; }
+.body hr { border-top-color: #2F5560; }
+.foot { color: ${v.accent}; }`,
+  saffron: `.frame { border-radius: 24px; border: 2px solid #E9B35E; outline: 5px solid #FFF1CF; box-shadow: 0 4px 16px rgba(163,85,8,.16); }
+.head { text-align: center; }
+.mood { display: inline-block; width: 54px; height: 54px; line-height: 54px; border-radius: 50%; background: #FFE3B0; text-align: center; }
+.date { color: ${v.accent}; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; font-size: 12px; }
+h1.title { color: ${v.accent}; font-weight: 800; font-size: 36px; }
+.head::after { content: '❋ ❋ ❋'; display: block; color: #E9A23B; letter-spacing: .5em; font-size: 13px; margin-top: 4px; }
+.meta { justify-content: center; }
+.chip { background: #FFF1D6; border: 1.5px solid #F0CF8E; color: ${v.accent}; font-weight: 600; }
+.photos .ph { background: #fff; padding: 6px; border-radius: 12px; border: 2px solid #C9D9A0; }
+.photos img { border-radius: 8px; }
+.body hr { border-top: 2px dotted #E9B35E; }
+.foot { color: ${v.accent}; }`,
+  kitty: `.frame { border-radius: 26px; box-shadow: 0 4px 18px rgba(140,100,70,.16); }
+.kbrow { height: 138px; box-sizing: border-box; padding: 30px 26px 8px; display: flex; align-items: center; justify-content: center; }
+.kbrow.bottom { padding: 8px 26px 30px; }
+.kbrow img { display: block; width: 100%; max-height: 100px; object-fit: contain; }
+.head { text-align: center; }
+.mood { display: inline-block; width: 54px; height: 54px; line-height: 54px; border-radius: 50%; background: #FCE6EA; text-align: center; }
+.date { color: ${v.accent}; font-weight: 700; letter-spacing: .08em; font-size: 12px; }
+h1.title { color: ${v.ink}; font-weight: 800; font-size: 34px; }
+.meta { justify-content: center; }
+.chip { background: #FDEFF1; border: 1px solid #F3CBD3; color: ${v.accent}; font-weight: 600; }
+.photos .ph { background: #fff; padding: 7px; border-radius: 12px; box-shadow: 0 2px 8px rgba(140,100,70,.2); }
+.photos img { border-radius: 7px; }
+.body blockquote { background: #FFF3EC; border-radius: 10px; padding: 8px 14px; }
+.body hr { border-top: 2px dotted #EBC9B8; }
+.foot { color: ${v.accent}; }`,
+  mono: `.frame { border: 2px solid ${v.ink}; border-radius: 0; box-shadow: 8px 8px 0 ${v.accent}; }
+.head { text-align: ${rtl ? 'right' : 'left'}; border-bottom: 3px solid ${v.ink}; padding-bottom: 10px; margin-bottom: 18px; }
+.date { color: ${v.accent}; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; font-size: 12px; }
+h1.title { font-weight: 900; font-size: 38px; letter-spacing: -.02em; margin-bottom: 2px; }
+.mood { font-size: 22px; float: ${rtl ? 'left' : 'right'}; filter: grayscale(1); }
+.chip { border: 1.5px solid ${v.ink}; border-radius: 0; background: #fff; font-weight: 700; }
+.photos img { border-radius: 0; filter: grayscale(1) contrast(1.05); border: 2px solid ${v.ink}; }
+.body blockquote { border-color: ${v.accent}; color: ${v.ink}; font-weight: 600; }
+.body hr { border-top: 2px solid ${v.ink}; }
+.foot { text-transform: uppercase; letter-spacing: .24em; font-size: 10px; font-weight: 800; }`,
 }[key]}
 `;
 
@@ -188,18 +258,29 @@ h1.title { color: ${v.accent}; font-weight: 400; letter-spacing: .03em; }
  * @param {boolean} p.rtl
  * @param {string} p.footer         small line at the end
  */
-export function buildEntryHtml({ entry, bodyHtml, template = DEFAULT_TEMPLATE, dateText, photos = [], moodFace = '', rtl = false, footer = 'Kitty Journal', fontFaces = '' }) {
+export function buildEntryHtml({ entry, bodyHtml, template = DEFAULT_TEMPLATE, dateText, photos = [], moodFace = '', rtl = false, footer = 'Kitty Journal', fontFaces = '', random = Math.random }) {
   const key = VARS[template] ? template : DEFAULT_TEMPLATE;
   const v = VARS[key];
   const tags = (entry.tags || []).map((x) => `<span class="chip">#${escapeHtml(x.name)}</span>`).join('');
   const place = entry.location && (entry.location.name || entry.location.address);
   const placeChip = place ? `<span class="chip">📍 ${escapeHtml(place)}</span>` : '';
+  // The Kitten template puts two different random cat dividers in the repeating table head and foot, so they appear at the
+  // top and bottom of EVERY printed page (the same pair on all pages of one export; new picks on every export).
+  let kbTop = '';
+  let kbBottom = '';
+  if (key === 'kitty' && CAT_BORDERS.length) {
+    const n = CAT_BORDERS.length;
+    const a = Math.min(n - 1, Math.floor(random() * n));
+    const b = n > 1 ? (a + 1 + Math.min(n - 2, Math.floor(random() * (n - 1)))) % n : a;
+    kbTop = `<div class="kbrow top"><img src="${CAT_BORDERS[a]}" alt=""></div>`;
+    kbBottom = `<div class="kbrow bottom"><img src="${CAT_BORDERS[b]}" alt=""></div>`;
+  }
   const imgs = photos.filter(Boolean).map((src) => `<div class="ph"><img src="${src}"></div>`).join('');
-  return `<!doctype html><html lang="${rtl ? 'fa' : 'en'}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>${CSS(v, key, rtl)}</style>${fontFaces ? `<style>${fontFaces}</style>` : ''}</head><body class="tpl-${key}"><div class="frame"></div><table class="flow"><thead><tr><td><div class="sp"></div></td></tr></thead><tfoot><tr><td><div class="sp"></div></td></tr></tfoot><tbody><tr><td><div class="content">
+  return `<!doctype html><html lang="${rtl ? 'fa' : 'en'}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>${CSS(v, key, rtl)}</style>${fontFaces ? `<style>${fontFaces}</style>` : ''}</head><body class="tpl-${key}"><div class="frame"></div><table class="flow"><thead><tr><td>${kbTop || '<div class="sp"></div>'}</td></tr></thead><tfoot><tr><td>${kbBottom || '<div class="sp"></div>'}</td></tr></tfoot><tbody><tr><td><div class="content">
 <div class="head">${moodFace ? `<div class="mood">${/^data:/.test(moodFace) ? `<img src="${moodFace}" style="width:40px;height:40px;vertical-align:middle" />` : moodFace}</div>` : ''}<div class="date">${escapeHtml(dateText)}</div>${entry.title ? `<h1 class="title">${escapeHtml(entry.title)}</h1>` : ''}</div>
 ${placeChip || tags ? `<div class="meta">${placeChip}${tags}</div>` : ''}
 ${imgs ? `<div class="photos${photos.filter(Boolean).length > 1 ? ' many' : ''}">${imgs}</div>` : ''}
 <div class="body">${sanitizeHtml(bodyHtml || '')}</div>
-<div class="foot">${key === 'cozy' ? '♡' : '✧'} ${escapeHtml(footer)} ${key === 'cozy' ? '♡' : '✧'}</div>
+<div class="foot">${key === 'cozy' ? '♡' : key === 'kitty' ? '🐾' : '✧'} ${escapeHtml(footer)} ${key === 'cozy' ? '♡' : key === 'kitty' ? '🐾' : '✧'}</div>
 </div></td></tr></tbody></table></body></html>`;
 }
