@@ -17,7 +17,6 @@ const { gregorianToJalali, jalaliToGregorian, jalaliMonthLength, calendarDateKey
 const { htmlToBlocks } = await load('../src/utils/richView.js');
 const { onThisDay } = await load('../src/utils/onThisDay.js');
 const { buildStories, importance, STORY_MAX } = await load('../src/utils/stories.js');
-const { todayData, monthData, weekData } = await load('../src/widgets/widgetData.js');
 const { buildEntryHtml, TEMPLATES } = await load('../src/utils/entryPdf.js');
 const { buildPalette, THEME_KEYS, contrastRatio } = await load('../src/theme.js');
 const { matchesSearch, topTags } = await load('../src/utils/filters.js');
@@ -287,34 +286,6 @@ await test('groupPlaces: a chain of places is not merged into one endless cluste
   assert.ok(groups.length >= 3, 'got ' + groups.length);
 });
 
-await test('widgets: today and month data follow language, calendar and week start', () => {
-  const now = new Date(2026, 10, 3, 9, 0); // Tue 3 Nov 2026 = 12 Aban 1405
-  const en = todayData({ now, language: 'en' });
-  assert.equal(en.day, '3'); assert.equal(en.weekday, 'Tuesday'); assert.equal(en.month, 'November');
-  const fa = todayData({ now, language: 'fa' });
-  assert.equal(fa.day, '۱۲'); assert.equal(fa.rtl, true);
-  const m = monthData({ now, language: 'en' });
-  assert.equal(m.weekdays.length, 7); assert.equal(m.weekdays[0], 'Mo');
-  assert.ok(m.weeks.every((w) => w.length === 7));
-  assert.equal(m.weeks[0].findIndex((x) => !x.blank), 6, '1 Nov 2026 is a Sunday: last column of a Monday-first week');
-  assert.equal(m.weeks.flat().filter((x) => x.today).length, 1);
-  assert.equal(m.weeks.flat().filter((x) => !x.blank).length, 30);
-  const mf = monthData({ now, language: 'fa' });
-  assert.equal(mf.weeks.flat().filter((x) => !x.blank).length, 30, 'Aban has 30 days');
-  assert.equal(mf.weeks.flat().find((x) => x.today).label, '۱۲');
-  assert.equal(mf.weekdays.length, 7);
-});
-await test('widgets: week strip is the current week, Monday first (Saturday first, right to left, in Persian)', () => {
-  const now = new Date(2026, 10, 3, 9, 0); // Tuesday
-  const w = weekData({ now, language: 'en' });
-  assert.deepEqual(w.days.map((d) => d.label), ['2', '3', '4', '5', '6', '7', '8']);
-  assert.equal(w.days.findIndex((d) => d.today), 1);
-  const f = weekData({ now, language: 'fa' });
-  assert.equal(f.days.length, 7);
-  assert.equal(f.days.find((d) => d.today).label, '۱۲');
-  // Persian week starts on Saturday 9 Aban; rows run right to left, so Saturday is the last array item
-  assert.equal(f.days[f.days.length - 1].label, '۹', 'Saturday 9 Aban 1405 starts this week');
-});
 await test('onThisDay: same day and month in earlier years, nearest first; Solar Hijri uses Jalali days', () => {
   const es = [
     { id: 1, journal_date: '2024-11-03' }, { id: 2, journal_date: '2025-11-03' }, { id: 3, journal_date: '2026-11-03' },
