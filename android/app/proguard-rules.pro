@@ -12,6 +12,3 @@
 -keep class com.facebook.react.turbomodule.** { *; }
 
 # Add any project specific keep options here:
--keep class expo.modules.** { *; }
--keep class io.github.expo.modules.** { *; }
--keepclassmembers class * extends expo.modules.kotlin.modules.Module { *; }
