@@ -10,10 +10,11 @@ import {
   Crown,
   Image as ImageIcon,
   Map as MapIcon,
-  MapPin,
+  Sparkles,
 } from "lucide-react-native";
 import { ScrollView, Text } from "../ui";
 import { Button } from "./common";
+import MoodFace from "./MoodFace";
 import { TEASER_CATS } from "../../assets/images/teaserImages";
 import { usePremium } from "../premium";
 
@@ -217,47 +218,41 @@ function MapPreview({ c }) {
   );
 }
 
-/** Three rows of places (skeleton lines, so it needs no translation). */
-function PlacesPreview({ c, rtl }) {
+/** A mock "Wrapped" poster: big year, mood faces, a mini year-in-pixels and three stat tiles. Numbers only, so it needs no translation. */
+const PIX = ["#7A8FB8", "#E2A06C", "#E9D27B", "#9CCB8F", "#4DA36A"];
+const PIX_ROWS = Array.from({ length: 7 }, (_, r) =>
+  Array.from({ length: 20 }, (_, k) => PIX[(r * 2 + k * 3 + (k % 4) * (r % 3)) % 5]),
+);
+function WrappedPreview({ c, rtl }) {
+  const ink = c.onAccent || "#FFFFFF";
+  const year = new Date().getFullYear();
   return (
-    <View style={{ gap: 10 }}>
-      {[0, 1, 2].map((i) => (
-        <View
-          key={i}
-          style={[
-            s.place,
-            { backgroundColor: c.card, borderColor: c.line },
-            rtl && s.rowReverse,
-          ]}
-        >
-          <View style={[s.avatar, { backgroundColor: TINTS[i + 2] }]}>
-            <Image
-              source={cat([6, 2, 14][i])}
-              style={{ width: 38, height: 38 }}
-              resizeMode="contain"
-            />
+    <View style={[s.poster, { backgroundColor: c.accent }]}>
+      <View style={[s.faces, rtl && s.rowReverse]}>
+        {["veryLow", "low", "okay", "good", "great"].map((m) => (
+          <View key={m} style={s.face}>
+            <MoodFace mood={m} size={26} />
           </View>
-          <View style={{ flex: 1, gap: 7 }}>
-            <View
-              style={[
-                s.bar,
-                { width: `${70 - i * 12}%`, backgroundColor: c.line },
-              ]}
-            />
-            <View
-              style={[
-                s.bar,
-                {
-                  width: `${45 - i * 6}%`,
-                  height: 7,
-                  backgroundColor: c.accentSoft,
-                },
-              ]}
-            />
+        ))}
+      </View>
+      <Text style={{ color: ink, fontSize: 56, fontWeight: "800", letterSpacing: 2, lineHeight: 64 }}>{year}</Text>
+      <View style={{ gap: 2, alignItems: "center" }}>
+        {PIX_ROWS.map((row, r) => (
+          <View key={r} style={{ flexDirection: "row", gap: 2 }}>
+            {row.map((col, k) => (
+              <View key={k} style={{ width: 11, height: 11, borderRadius: 2.5, backgroundColor: col }} />
+            ))}
           </View>
-          <MapPin size={16} color={c.accent} />
-        </View>
-      ))}
+        ))}
+      </View>
+      <View style={[s.statRow, rtl && s.rowReverse]}>
+        {["128", "21", "9"].map((n, i) => (
+          <View key={n} style={[s.stat, { backgroundColor: "rgba(255,255,255,0.18)" }]}>
+            <Text style={{ color: ink, fontSize: 24, fontWeight: "800" }}>{n}</Text>
+            <View style={{ width: "55%", height: 6, borderRadius: 3, backgroundColor: "rgba(255,255,255,0.45)" }} />
+          </View>
+        ))}
+      </View>
     </View>
   );
 }
@@ -269,7 +264,7 @@ export default function MemoriesTeaser({ t, c, rtl }) {
   const tabs = [
     ["photos", t.memoriesImages, ImageIcon, t.memoriesTeasePhotos],
     ["map", t.memoriesMap, MapIcon, t.memoriesTeaseMap],
-    ["places", t.memoriesPlaces, MapPin, t.memoriesTeasePlaces],
+    ["wrapped", t.memoriesWrapped, Sparkles, t.memoriesTeaseWrapped],
   ];
   const body = tabs.find((x) => x[0] === tab)[3];
   return (
@@ -323,7 +318,7 @@ export default function MemoriesTeaser({ t, c, rtl }) {
           ) : tab === "map" ? (
             <MapPreview c={c} />
           ) : (
-            <PlacesPreview c={c} rtl={rtl} />
+            <WrappedPreview c={c} rtl={rtl} />
           )}
           <View
             style={[
@@ -426,21 +421,11 @@ const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  place: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    borderWidth: 1,
-    borderRadius: 16,
-    padding: 12,
-  },
-  avatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  poster: { borderRadius: 24, paddingVertical: 20, paddingHorizontal: 14, gap: 14, alignItems: "center", overflow: "hidden" },
+  faces: { flexDirection: "row", gap: 8 },
+  face: { width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.9)", alignItems: "center", justifyContent: "center" },
+  statRow: { flexDirection: "row", gap: 8, alignSelf: "stretch" },
+  stat: { flex: 1, borderRadius: 14, paddingVertical: 12, gap: 6, alignItems: "center" },
   bar: { height: 10, borderRadius: 5 },
   badge: {
     position: "absolute",

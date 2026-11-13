@@ -65,6 +65,11 @@ h1.title { margin: 8px 0 14px; font-size: 32px; line-height: 1.25; color: ${v.in
 .body h1, .body h2, .body h3 { margin: 18px 0 8px; line-height: 1.3; color: ${v.ink}; }
 .body h1 { font-size: 26px; } .body h2 { font-size: 21px; } .body h3 { font-size: 18px; }
 .body ul, .body ol { margin: 0 0 12px; padding-${rtl ? 'right' : 'left'}: 24px; }
+.body ul[data-todo] { list-style: none; padding-${rtl ? 'right' : 'left'}: 0; }
+.body ul[data-todo] > li { position: relative; padding-${rtl ? 'right' : 'left'}: 30px; margin-bottom: 4px; }
+.body ul[data-todo] > li::before { content: ''; position: absolute; ${rtl ? 'right' : 'left'}: 2px; top: .42em; width: 17px; height: 17px; box-sizing: border-box; border: 2px solid ${v.accent}; border-radius: 5px; }
+.body ul[data-todo] > li[data-done]::before { content: '\\2713'; background: ${v.accent}; color: #fff; font-size: 12px; line-height: 13px; text-align: center; font-weight: 700; }
+.body ul[data-todo] > li[data-done] { color: ${v.muted}; text-decoration: line-through; }
 .body blockquote { margin: 0 0 12px; padding: 2px 14px; border-${rtl ? 'right' : 'left'}: 3px solid ${v.accent}; color: ${v.muted}; }
 .body hr { border: 0; border-top: 1px solid ${v.line}; margin: 18px 0; }
 .photos { margin: 0 0 22px; display: flex; flex-wrap: wrap; gap: 10px; }
@@ -220,8 +225,10 @@ h1.title { color: ${v.accent}; font-weight: 800; font-size: 36px; }
 .body hr { border-top: 2px dotted #E9B35E; }
 .foot { color: ${v.accent}; }`,
   kitty: `.frame { border-radius: 26px; box-shadow: 0 4px 18px rgba(140,100,70,.16); }
-.kbrow { height: 138px; box-sizing: border-box; padding: 30px 26px 8px; display: flex; align-items: center; justify-content: center; }
-.kbrow.bottom { padding: 8px 26px 30px; }
+.kbrow { position: fixed; left: 0; right: 0; z-index: 1; height: 138px; box-sizing: border-box; padding: 30px 26px 8px; display: flex; align-items: center; justify-content: center; }
+.kbrow.top { top: 0; }
+.kbrow.bottom { bottom: 0; padding: 8px 26px 30px; }
+.kbspace { height: 138px; }
 .kbrow img { display: block; width: 100%; max-height: 100px; object-fit: contain; }
 .head { text-align: center; }
 .mood { display: inline-block; width: 54px; height: 54px; line-height: 54px; border-radius: 50%; background: #FCE6EA; text-align: center; }
@@ -276,11 +283,58 @@ export function buildEntryHtml({ entry, bodyHtml, template = DEFAULT_TEMPLATE, d
     kbBottom = `<div class="kbrow bottom"><img src="${CAT_BORDERS[b]}" alt=""></div>`;
   }
   const imgs = photos.filter(Boolean).map((src) => `<div class="ph"><img src="${src}"></div>`).join('');
-  return `<!doctype html><html lang="${rtl ? 'fa' : 'en'}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>${CSS(v, key, rtl)}</style>${fontFaces ? `<style>${fontFaces}</style>` : ''}</head><body class="tpl-${key}"><div class="frame"></div><table class="flow"><thead><tr><td>${kbTop || '<div class="sp"></div>'}</td></tr></thead><tfoot><tr><td>${kbBottom || '<div class="sp"></div>'}</td></tr></tfoot><tbody><tr><td><div class="content">
+  return `<!doctype html><html lang="${rtl ? 'fa' : 'en'}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>${CSS(v, key, rtl)}</style>${fontFaces ? `<style>${fontFaces}</style>` : ''}</head><body class="tpl-${key}"><div class="frame"></div>${kbTop}${kbBottom}<table class="flow"><thead><tr><td>${kbTop ? '<div class="kbspace"></div>' : '<div class="sp"></div>'}</td></tr></thead><tfoot><tr><td>${kbBottom ? '<div class="kbspace"></div>' : '<div class="sp"></div>'}</td></tr></tfoot><tbody><tr><td><div class="content">
 <div class="head">${moodFace ? `<div class="mood">${/^data:/.test(moodFace) ? `<img src="${moodFace}" style="width:40px;height:40px;vertical-align:middle" />` : moodFace}</div>` : ''}<div class="date">${escapeHtml(dateText)}</div>${entry.title ? `<h1 class="title">${escapeHtml(entry.title)}</h1>` : ''}</div>
 ${placeChip || tags ? `<div class="meta">${placeChip}${tags}</div>` : ''}
 ${imgs ? `<div class="photos${photos.filter(Boolean).length > 1 ? ' many' : ''}">${imgs}</div>` : ''}
 <div class="body">${sanitizeHtml(bodyHtml || '')}</div>
 <div class="foot">${key === 'cozy' ? '♡' : key === 'kitty' ? '🐾' : '✧'} ${escapeHtml(footer)} ${key === 'cozy' ? '♡' : key === 'kitty' ? '🐾' : '✧'}</div>
+</div></td></tr></tbody></table></body></html>`;
+}
+
+/**
+ * One PDF with many entries (the monthly book), in any template (Kitten by default, with its cat dividers): a cover page, then every entry on its own
+ * page(s), with the same random cat dividers at the top and bottom of every page.
+ * @param {object} p
+ * @param {string} p.title     e.g. the month name
+ * @param {string} p.subtitle  e.g. "12 entries"
+ * @param {Array<{entry: object, bodyHtml: string, dateText: string, photos: string[], moodFace: string}>} p.items
+ */
+export function buildBookHtml({ title, subtitle = '', items, rtl = false, footer = 'Kitty Journal', fontFaces = '', template = 'kitty', stats = [], random = Math.random }) {
+  const key = VARS[template] ? template : 'kitty';
+  const v = VARS[key];
+  const n = key === 'kitty' ? CAT_BORDERS.length : 0; // cat dividers belong to the Kitten template only
+  const mark = key === 'kitty' ? '🐾' : key === 'cozy' ? '♡' : '✧';
+  const a = n ? Math.min(n - 1, Math.floor(random() * n)) : 0;
+  const b = n > 1 ? (a + 1 + Math.min(n - 2, Math.floor(random() * (n - 1)))) % n : a;
+  const kbTop = n ? `<div class="kbrow top"><img src="${CAT_BORDERS[a]}" alt=""></div>` : '<div class="sp"></div>';
+  const kbBottom = n ? `<div class="kbrow bottom"><img src="${CAT_BORDERS[b]}" alt=""></div>` : '<div class="sp"></div>';
+  const block = ({ entry, bodyHtml, dateText, photos = [], moodFace = '' }) => {
+    const tags = (entry.tags || []).map((x) => `<span class="chip">#${escapeHtml(x.name)}</span>`).join('');
+    const place = entry.location && (entry.location.name || entry.location.address);
+    const placeChip = place ? `<span class="chip">📍 ${escapeHtml(place)}</span>` : '';
+    const list = photos.filter(Boolean);
+    const imgs = list.map((src) => `<div class="ph"><img src="${src}"></div>`).join('');
+    return `<div class="entry">
+<div class="head">${moodFace ? `<div class="mood">${/^data:/.test(moodFace) ? `<img src="${moodFace}" style="width:40px;height:40px;vertical-align:middle" />` : moodFace}</div>` : ''}<div class="date">${escapeHtml(dateText)}</div>${entry.title ? `<h1 class="title">${escapeHtml(entry.title)}</h1>` : ''}</div>
+${placeChip || tags ? `<div class="meta">${placeChip}${tags}</div>` : ''}
+${imgs ? `<div class="photos${list.length > 1 ? ' many' : ''}">${imgs}</div>` : ''}
+<div class="body">${sanitizeHtml(bodyHtml || '')}</div>
+</div>`;
+  };
+  const extra = `.entry { break-before: page; page-break-before: always; }
+.cover { text-align: center; padding-top: 150px; }
+.cover h1 { font-size: 54px; margin: 0 0 10px; color: ${v.accent}; font-weight: 800; }
+.cover .sub { color: ${v.muted}; font-size: 18px; }
+.cover .paw { font-size: 40px; margin-bottom: 14px; }
+.cstats { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin-top: 34px; }
+.cs { min-width: 120px; padding: 12px 16px; border: 1px solid ${v.line}; border-radius: 12px; }
+.cs b { display: block; font-size: 26px; color: ${v.accent}; }
+.cs span { font-size: 12px; color: ${v.muted}; }
+.end { margin-top: 26px; }`;
+  return `<!doctype html><html lang="${rtl ? 'fa' : 'en'}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>${CSS(v, key, rtl)}${extra}</style>${fontFaces ? `<style>${fontFaces}</style>` : ''}</head><body class="tpl-${key}"><div class="frame"></div>${n ? kbTop + kbBottom : ''}<table class="flow"><thead><tr><td>${n ? '<div class="kbspace"></div>' : '<div class="sp"></div>'}</td></tr></thead><tfoot><tr><td>${n ? '<div class="kbspace"></div>' : '<div class="sp"></div>'}</td></tr></tfoot><tbody><tr><td><div class="content">
+<div class="cover"><div class="paw">${mark}</div><h1>${escapeHtml(title)}</h1><div class="sub">${escapeHtml(subtitle)}</div>${stats.length ? `<div class="cstats">${stats.map(([label, value]) => `<div class="cs"><b>${escapeHtml(value)}</b><span>${escapeHtml(label)}</span></div>`).join('')}</div>` : ''}</div>
+${items.map(block).join('\n')}
+<div class="foot end">${mark} ${escapeHtml(footer)} ${mark}</div>
 </div></td></tr></tbody></table></body></html>`;
 }

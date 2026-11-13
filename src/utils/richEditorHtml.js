@@ -37,6 +37,11 @@ li{margin:.1em 0}
 blockquote{margin:.4em 0;padding-inline-start:.9em;border-inline-start:3px solid ${c.line};color:${c.muted}}
 hr{border:0;border-top:1px solid ${c.line};margin:.9em 0}
 strong,b{font-weight:700}
+ul[data-todo]{list-style:none;padding-inline-start:0}
+ul[data-todo]>li{position:relative;padding-inline-start:1.9em;min-height:1.4em}
+ul[data-todo]>li::before{content:'';position:absolute;inset-inline-start:.1em;top:.42em;width:1.1em;height:1.1em;box-sizing:border-box;border:2px solid ${c.accent};border-radius:.3em}
+ul[data-todo]>li[data-done]::before{background:${c.accent};content:'\\2713';color:#fff;font-size:.8em;line-height:1.1em;text-align:center;font-weight:700}
+ul[data-todo]>li[data-done]{color:${c.muted};text-decoration:line-through}
 </style></head>
 <body><div id="ph"></div><div id="ed" contenteditable="true" spellcheck="true" autocapitalize="sentences"></div>
 <script>
@@ -118,7 +123,7 @@ function normalize(){
   var sel=null,merged=false;
   for(var i=1;i<ed.children.length;i++){
     var cur=ed.children[i],prev=ed.children[i-1];
-    if(LISTS.test(cur.tagName)&&prev.tagName===cur.tagName&&(prev.getAttribute('dir')||'')===(cur.getAttribute('dir')||'')){
+    if(LISTS.test(cur.tagName)&&prev.tagName===cur.tagName&&(prev.getAttribute('dir')||'')===(cur.getAttribute('dir')||'')&&prev.hasAttribute('data-todo')===cur.hasAttribute('data-todo')){
       if(!merged){sel=getSel();merged=true;}
       while(cur.firstChild)prev.appendChild(cur.firstChild);
       ed.removeChild(cur);i--;
@@ -176,7 +181,7 @@ function report(force){
     var t=topOf(s.anchorNode);
     if(t&&t.nodeType===1){
       var tag=t.tagName.toLowerCase();
-      if(tag==='ul'||tag==='ol')st.list=tag;else st.block=tag;
+      if(tag==='ul'||tag==='ol')st.list=(tag==='ul'&&t.hasAttribute('data-todo'))?'todo':tag;else st.block=tag;
       st.dir=t.getAttribute('dir')||'';
     }
     st.color=currentColor();st.font=currentFont();st.highlight=currentHighlight();
@@ -229,13 +234,14 @@ function replaceTops(tops,html,selAfter){
   setSel(selAfter);
 }
 function attr(d){return d?' dir="'+d+'"':'';}
-function setList(kind){
+function setList(want){
   fixStructure();
   var tops=coveredTops();if(!tops.length)return;
   var sel=getSel();
-  var same=tops.every(function(b){return b.tagName.toLowerCase()===kind;});
+  var todo=want==='todo',kind=todo?'ul':want;
+  var same=tops.every(function(b){return b.tagName.toLowerCase()===kind&&b.hasAttribute('data-todo')===todo;});
   var html='',pending=[],pdir='';
-  function flush(){if(pending.length){html+='<'+kind+attr(pdir)+'>'+pending.join('')+'</'+kind+'>';pending=[];pdir='';}}
+  function flush(){if(pending.length){html+='<'+kind+attr(pdir)+(todo?' data-todo="1"':'')+'>'+pending.join('')+'</'+kind+'>';pending=[];pdir='';}}
   tops.forEach(function(b){
     var t=b.tagName,d=b.getAttribute('dir')||'';
     if(LISTS.test(t)){
@@ -251,8 +257,8 @@ function setList(kind){
 // Backspace at the very start of a list item (or Enter on an empty one) leaves the list.
 function leaveList(li){
   var list=li.parentNode;if(!list||!LISTS.test(list.tagName)||list.parentNode!==ed)return false;
-  var kind=list.tagName.toLowerCase(),d=list.getAttribute('dir')||'',items=[].slice.call(list.children),idx=items.indexOf(li);
-  var mk=function(arr){return arr.length?'<'+kind+attr(d)+'>'+arr.map(function(x){return '<li>'+(x.innerHTML||'<br>')+'</li>';}).join('')+'</'+kind+'>':'';};
+  var kind=list.tagName.toLowerCase(),d=list.getAttribute('dir')||'',todo=list.hasAttribute('data-todo'),items=[].slice.call(list.children),idx=items.indexOf(li);
+  var mk=function(arr){return arr.length?'<'+kind+attr(d)+(todo?' data-todo="1"':'')+'>'+arr.map(function(x){return '<li'+(todo&&x.hasAttribute('data-done')?' data-done="1"':'')+'>'+(x.innerHTML||'<br>')+'</li>';}).join('')+'</'+kind+'>':'';};
   var html=mk(items.slice(0,idx))+'<p'+attr(d)+'>'+(li.innerHTML||'<br>')+'</p>'+mk(items.slice(idx+1));
   var all=leaves(),li_i=all.indexOf(li);
   replaceTops([list],html,{si:li_i,so:0,ei:li_i,eo:0});
@@ -315,7 +321,7 @@ window.__cmd=function(name,arg){
   flushSnap();
   var map={bold:'bold',italic:'italic',underline:'underline',strike:'strikeThrough'};
   if(map[name])document.execCommand(map[name],false,null);
-  else if(name==='ul'||name==='ol')setList(name);
+  else if(name==='ul'||name==='ol'||name==='todo')setList(name);
   else if(name==='h1'||name==='h2'||name==='h3')toggleBlock(name);
   else if(name==='ltr'||name==='rtl')setDir(name);
   else if(name==='color')setColor(arg);
@@ -346,6 +352,11 @@ ed.addEventListener('beforeinput',function(e){
   if(t==='insertParagraph'||t==='insertFromPaste'||t==='deleteByCut')flushSnap();
 });
 ed.addEventListener('input',function(e){
+  if(e.inputType==='insertParagraph'){
+    var s0=getSelection(),n0=s0.rangeCount&&s0.anchorNode;n0=n0&&(n0.nodeType===1?n0:n0.parentElement);
+    while(n0&&n0!==ed&&n0.tagName!=='LI')n0=n0.parentElement;
+    if(n0&&n0.tagName==='LI')n0.removeAttribute('data-done');
+  }
   afterEdit();saveSel();caret();
   if(e.inputType==='insertParagraph'||e.inputType==='insertFromPaste'||e.inputType==='deleteByCut'){pushSnap();}
   else scheduleSnap();
@@ -358,6 +369,17 @@ ed.addEventListener('paste',function(e){
   if(t){flushSnap();document.execCommand('insertText',false,t);}
 });
 ed.addEventListener('drop',function(e){e.preventDefault();});
+// A tap on a checklist box (the first line, at the list's start edge) ticks or unticks the item.
+ed.addEventListener('click',function(e){
+  var li=e.target;while(li&&li!==ed&&li.tagName!=='LI')li=li.parentElement;
+  if(!li||li===ed||!li.parentNode||!li.parentNode.hasAttribute||!li.parentNode.hasAttribute('data-todo'))return;
+  var r=li.getBoundingClientRect(),rtl=getComputedStyle(li).direction==='rtl';
+  var dx=rtl?r.right-e.clientX:e.clientX-r.left;
+  if(dx<0||dx>38||e.clientY-r.top>40)return;
+  e.preventDefault();flushSnap();
+  if(li.hasAttribute('data-done'))li.removeAttribute('data-done');else li.setAttribute('data-done','1');
+  afterEdit();pushSnap();
+});
 document.addEventListener('selectionchange',function(){saveSel();report();});
 if(window.ResizeObserver){new ResizeObserver(height).observe(ed);}
 /* The WebView is exactly as tall as the text, so the page itself must never scroll:

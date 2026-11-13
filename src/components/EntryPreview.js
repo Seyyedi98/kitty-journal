@@ -27,8 +27,6 @@ import { attachmentUri } from "../services/photos";
 import { entryToEditorHtml } from "../utils/richText";
 import { htmlToBlocks } from "../utils/richView";
 import PhotoViewer from "./PhotoViewer";
-import { fontKey as fontKeyOfCss } from "../utils/richText";
-import { fontKeysIn, loadNativeFonts, toolbarFamily, webFontCss } from "../toolbarFonts";
 import ShareSheet from "./ShareSheet";
 import { Dialog } from "../platform/dialog";
 import { buildEntryHtml } from "../utils/entryPdf";
@@ -39,12 +37,20 @@ import {
   deliverFile,
 } from "../platform/exportEntry";
 
+const FONTS = {
+  serif: "serif",
+  naskh: "serif",
+  mono: "monospace",
+  hand: "cursive",
+};
 const SIZES = { h1: 26, h2: 21, h3: 18, p: 16, li: 16 };
 
-// Which of the editor's font choices a run uses (serif | naskh | mono | hand), or undefined for the normal font.
 function fontOf(css) {
-  const v = String(css || "");
-  return ["serif", "naskh", "mono", "hand"].includes(v) ? v : fontKeyOfCss(v) || undefined;
+  const x = String(css || "").toLowerCase();
+  if (x.includes("mono")) return FONTS.mono;
+  if (x.includes("cursive")) return FONTS.hand;
+  if (x.includes("serif")) return FONTS.serif;
+  return undefined;
 }
 
 function Body({ html, c, rtl }) {
@@ -64,7 +70,8 @@ function Body({ html, c, rtl }) {
         const text = (
           <Text
             style={{
-              color: c.ink,
+              color: b.done ? c.muted : c.ink,
+              textDecorationLine: b.done ? "line-through" : undefined,
               fontSize: SIZES[b.type] || 16,
               lineHeight: Math.round((SIZES[b.type] || 16) * 1.55),
               fontWeight: b.type.startsWith("h") ? "700" : "400",
@@ -78,7 +85,7 @@ function Body({ html, c, rtl }) {
                   <Text
                     key={j}
                     style={{
-                      fontWeight: r.bold && !toolbarFamily(fontOf(r.font), r.text, true) ? "700" : undefined,
+                      fontWeight: r.bold ? "700" : undefined,
                       fontStyle: r.italic ? "italic" : undefined,
                       textDecorationLine:
                         r.underline && r.strike
@@ -90,7 +97,7 @@ function Body({ html, c, rtl }) {
                               : undefined,
                       color: r.color || undefined,
                       backgroundColor: r.background || undefined,
-                      fontFamily: toolbarFamily(fontOf(r.font), r.text, r.bold),
+                      fontFamily: fontOf(r.font),
                     }}
                   >
                     {r.text}
@@ -104,8 +111,8 @@ function Body({ html, c, rtl }) {
           >
             <Text
               style={{
-                color: c.muted,
-                fontSize: 16,
+                color: b.todo && !b.done ? c.accent : c.muted,
+                fontSize: b.todo ? 19 : 16,
                 lineHeight: 25,
                 minWidth: 18,
                 textAlign: dirRtl ? "left" : "right",
@@ -165,13 +172,6 @@ export default function EntryPreview({
   const shotRef = useRef(null);
   const [sheet, setSheet] = useState(false);
   const id = entry && entry.id;
-  const [, bumpFont] = useState(0);
-  const bodyHtml = entry ? entryToEditorHtml(entry) : "";
-  useEffect(() => {
-    if (!visible || !bodyHtml) return;
-    const keys = fontKeysIn(bodyHtml);
-    if (keys.length) loadNativeFonts(keys).then(() => bumpFont((n) => n + 1));
-  }, [visible, bodyHtml]);
 
   useEffect(() => {
     if (!visible || !id) return undefined;
@@ -243,7 +243,6 @@ export default function EntryPreview({
   const shareAsPdf = async (template, mode) => {
     try {
       const uris = await photoDataUris(photos.map((p) => p.file_name));
-      const fontFaces = await webFontCss(fontKeysIn(html)).catch(() => "");
       const doc = buildEntryHtml({
         entry,
         bodyHtml: html,
@@ -253,7 +252,6 @@ export default function EntryPreview({
         moodFace: mood ? MOOD_IMAGES[mood.key] : "",
         rtl,
         footer: "Kitty Journal",
-        fontFaces,
       });
       const file = await makePdfFile(doc, fileInfo);
       const r = await deliverFile(file, mode, fileInfo.dialogTitle);

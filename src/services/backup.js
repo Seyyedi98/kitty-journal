@@ -24,6 +24,7 @@
 
 import { cleanTagName, tagKey } from '../utils/text';
 import { cleanEmotions } from '../utils/emotions';
+import { NOTEBOOK_COLORS, cleanNotebookName, notebookKey } from '../utils/notebooks';
 import { htmlToRow } from '../utils/richText';
 import { cleanLocation, listReferencedFiles } from '../db/repository';
 import { LATEST_VERSION } from '../db/migrations';
@@ -92,6 +93,8 @@ export async function collectData(db) {
   const attRows = await db.getAllAsync('SELECT * FROM attachments ORDER BY entry_id, sort_order, id');
   const moods = await db.getAllAsync('SELECT journal_date, mood, updated_at FROM daily_moods ORDER BY journal_date');
   const settingRows = await db.getAllAsync('SELECT key, value FROM app_settings');
+  const nbRows = await db.getAllAsync('SELECT id, uuid, name, color, sort_order, created_at, updated_at FROM notebooks ORDER BY sort_order, id');
+  const nbUuid = new Map(nbRows.map((n) => [n.id, n.uuid]));
 
   const group = (rows) => {
     const m = new Map();
@@ -118,6 +121,8 @@ export async function collectData(db) {
       favorite: e.favorite ? 1 : 0,
       pinned: e.pinned ? 1 : 0,
       font: e.font ?? null,
+      unlock_at: e.unlock_at ?? null,
+      notebook: e.notebook_id != null ? nbUuid.get(e.notebook_id) || null : null,
       created_at: e.created_at,
       updated_at: e.updated_at,
       deleted_at: e.deleted_at ?? null,
@@ -154,7 +159,8 @@ export async function collectData(db) {
       /* skip corrupt */
     }
   }
-  return { entries: outEntries, dailyMoods: moods, settings };
+  const notebooks = nbRows.map(({ id, ...rest }) => rest);
+  return { entries: outEntries, dailyMoods: moods, settings, notebooks };
 }
 
 function stripLocalNames(data) {
@@ -320,6 +326,19 @@ export function validateData(input) {
     return { errors, warnings, data: null };
   }
 
+  const notebooks = [];
+  const nbUuids = new Set();
+  for (const n of Array.isArray(input.notebooks) ? input.notebooks : []) {
+    if (!n || typeof n.uuid !== 'string' || !UID_RE.test(n.uuid) || nbUuids.has(n.uuid)) continue;
+    const name = cleanNotebookName(n.name);
+    if (!name) continue;
+    nbUuids.add(n.uuid);
+    notebooks.push({
+      uuid: n.uuid, name, color: NOTEBOOK_COLORS.some((x) => x.key === n.color) ? n.color : 'sage',
+      sort_order: Number.isFinite(Number(n.sort_order)) ? Number(n.sort_order) : notebooks.length,
+      created_at: isIso(n.created_at) ? n.created_at : nowIso(), updated_at: isIso(n.updated_at) ? n.updated_at : nowIso(),
+    });
+  }
   const entryIds = new Set();
   const attIds = new Set();
   let droppedEmotions = 0;
@@ -396,6 +415,8 @@ export function validateData(input) {
       favorite: flag(e.favorite),
       pinned: flag(e.pinned),
       font: typeof e.font === 'string' && /^[a-z0-9_]{1,32}$/.test(e.font) ? e.font : null,
+      unlock_at: isIso(e.unlock_at) ? new Date(e.unlock_at).toISOString() : null,
+      notebook: typeof e.notebook === 'string' && nbUuids.has(e.notebook) ? e.notebook : null,
       created_at: e.created_at,
       updated_at: e.updated_at,
       deleted_at: e.deleted_at ?? null,
@@ -436,7 +457,7 @@ export function validateData(input) {
   if (droppedEmotions) warnings.push({ code: 'unknown-emotions', detail: droppedEmotions });
   if (unknownMoods) warnings.push({ code: 'unknown-moods', detail: unknownMoods });
   if (errors.length) return { errors, warnings, data: null };
-  return { errors, warnings, data: { entries, dailyMoods, settings } };
+  return { errors, warnings, data: { entries, dailyMoods, settings, notebooks } };
 }
 
 /* ------------------------------- parse ------------------------------- */
@@ -638,13 +659,14 @@ async function stageAttachment(deps, parsed, att, written) {
   return { ok: true, size, thumb: hasThumb ? thumbName : null, reused: false };
 }
 
-async function insertEntryDeep(db, e, staged) {
+async function insertEntryDeep(db, e, staged, nbIds = new Map()) {
   const res = await db.runAsync(
     `INSERT INTO entries (uuid, title, body, body_html, journal_date, mood, favorite, pinned, created_at,
-                          updated_at, deleted_at, content_format_version, font)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+                          updated_at, deleted_at, content_format_version, font, unlock_at, notebook_id)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     e.uuid, e.title, e.body, e.body_html, e.journal_date, e.mood, e.favorite, e.pinned,
-    e.created_at, e.updated_at, e.deleted_at, e.content_format_version, e.font ?? null,
+    e.created_at, e.updated_at, e.deleted_at, e.content_format_version, e.font ?? null, e.unlock_at ?? null,
+    e.notebook ? nbIds.get(e.notebook) ?? null : null,
   );
   const id = res.lastInsertRowId;
   const now = nowIso();
@@ -775,7 +797,7 @@ export async function applyRestore(db, deps, parsed, mode) {
 
     await db.withTransactionAsync(async () => {
       if (mode === 'replace') {
-        for (const table of ['entry_tags', 'entry_emotions', 'locations', 'attachments', 'entries', 'daily_moods', 'tags']) {
+        for (const table of ['entry_tags', 'entry_emotions', 'locations', 'attachments', 'entries', 'daily_moods', 'tags', 'notebooks']) {
           await db.runAsync(`DELETE FROM ${table}`);
         }
         for (const [key, value] of Object.entries(data.settings || {})) {
@@ -801,6 +823,19 @@ export async function applyRestore(db, deps, parsed, mode) {
           }
         }
       }
+      // Notebooks: matched by uuid (merge keeps an existing notebook; a clashing name gets a numeric suffix).
+      const nbIds = new Map();
+      for (const n of data.notebooks || []) {
+        const have = await db.getFirstAsync('SELECT id FROM notebooks WHERE uuid=?', n.uuid);
+        if (have) { nbIds.set(n.uuid, have.id); continue; }
+        let name = n.name;
+        for (let i = 2; await db.getFirstAsync('SELECT 1 AS x FROM notebooks WHERE name_key=?', notebookKey(name)); i++) name = `${n.name} ${i}`.slice(0, 40);
+        const r = await db.runAsync(
+          'INSERT INTO notebooks (uuid, name, name_key, color, sort_order, created_at, updated_at) VALUES (?,?,?,?,?,?,?)',
+          n.uuid, name, notebookKey(name), n.color, n.sort_order, n.created_at, n.updated_at,
+        );
+        nbIds.set(n.uuid, r.lastInsertRowId);
+      }
       for (const uuid of untrash) {
         await db.runAsync('UPDATE entries SET deleted_at = NULL, updated_at = ? WHERE uuid = ?', nowIso(), uuid);
         summary.entriesUntrashed += 1;
@@ -824,7 +859,7 @@ export async function applyRestore(db, deps, parsed, mode) {
         }
       }
       for (const e of toInsert) {
-        await insertEntryDeep(db, e, staged);
+        await insertEntryDeep(db, e, staged, nbIds);
         summary.entriesAdded += 1;
         for (const a of e.attachments) if (staged.get(a.uuid)?.ok) summary.photosAdded += 1;
       }

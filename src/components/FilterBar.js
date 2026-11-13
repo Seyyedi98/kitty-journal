@@ -1,7 +1,7 @@
 import React, { useRef } from 'react';
 import MoodFace from './MoodFace';
 import { Pressable, StyleSheet, View } from 'react-native';
-import { Star, X } from 'lucide-react-native';
+import { Lock, Star, X } from 'lucide-react-native';
 import { ScrollView, Text } from '../ui';
 import { MOODS } from '../theme';
 import { EMPTY_FILTERS, hasActiveFilters, topTags } from '../utils/filters';
@@ -28,7 +28,7 @@ function Chip({ selected, onPress, children, c, label }) {
   );
 }
 
-export default function FilterBar({ filters, setFilters, tags, t, c, rtl }) {
+export default function FilterBar({ filters, setFilters, tags, t, c, rtl, hasCapsules = false }) {
   const active = hasActiveFilters(filters);
   const toggle = (patch) => setFilters({ ...filters, ...patch });
   const usedTags = topTags(tags, 5, filters.tagId);
@@ -54,6 +54,12 @@ export default function FilterBar({ filters, setFilters, tags, t, c, rtl }) {
           <Star size={12} color={filters.favorites ? c.sageDark : c.muted} fill={filters.favorites ? c.sageDark : 'transparent'} />
           <Text style={[s.chipText, { color: filters.favorites ? c.sageDark : c.muted }]}>{t.favorites}</Text>
         </Chip>
+        {hasCapsules || filters.capsule ? (
+          <Chip c={c} selected={filters.capsule} onPress={() => toggle({ capsule: !filters.capsule })} label={t.capsule}>
+            <Lock size={12} color={filters.capsule ? c.sageDark : c.muted} />
+            <Text style={[s.chipText, { color: filters.capsule ? c.sageDark : c.muted }]}>{t.capsule}</Text>
+          </Chip>
+        ) : null}
         {MOODS.map((m) => (
           <Chip
             key={m.key}

@@ -1,16 +1,16 @@
 import { Dialog } from '../platform/dialog';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Image, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { Eraser, HardDrive, ScanSearch, Trash2 } from 'lucide-react-native';
 import { ScrollView, Text } from '../ui';
 import { Button, Card, Note, SubHeader } from '../components/common';
 import { checkAttachments, cleanOrphanFiles, fileOpsActive, OWN_FILE_RE, removeBrokenReferences } from '../services/photos';
 import { deps } from '../platform/deps';
+import PhotoReduceCard from '../components/PhotoReduceCard';
 import { formatBytes, numberFormatter } from '../utils/format';
 import { fmt } from '../i18n';
 
 const fs = deps.fs;
-const STORAGE_CAT = require('../../assets/images/storage-cat.png');
 
 async function folderStats(dir, filter) {
   let count = 0;
@@ -128,7 +128,6 @@ export default function StorageScreen({ db, t, c, rtl, language, onBack, onChang
   return (
     <ScrollView contentContainerStyle={s.page}>
       <SubHeader title={t.storage} onBack={onBack} c={c} rtl={rtl} t={t} />
-      <Image source={STORAGE_CAT} style={s.cat} resizeMode="contain" accessibilityIgnoresInvertColors />
 
       <Card title={t.storage} c={c} rtl={rtl}>
         {stats ? (
@@ -144,6 +143,8 @@ export default function StorageScreen({ db, t, c, rtl, language, onBack, onChang
           </View>
         ) : null}
       </Card>
+
+      <PhotoReduceCard db={db} t={t} c={c} rtl={rtl} language={language} onChanged={() => { load(); onChanged?.(); }} />
 
       <Card title={t.storageCheck} c={c} rtl={rtl}>
         <Button label={busy === 'check' ? t.storageChecking : t.storageCheck} onPress={check} c={c} rtl={rtl} icon={ScanSearch} busy={busy === 'check'} disabled={Boolean(busy)} />
@@ -171,6 +172,5 @@ export default function StorageScreen({ db, t, c, rtl, language, onBack, onChang
 }
 
 const s = StyleSheet.create({
-  page: { paddingTop: 22, paddingBottom: 24, gap: 14 },
-  cat: { width: 150, height: 136, alignSelf: 'center' },
+  page: { paddingTop: 22, paddingBottom: 40, gap: 14 },
 });

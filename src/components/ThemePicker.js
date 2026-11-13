@@ -5,7 +5,8 @@ import { Text } from '../ui';
 import { THEME_KEYS, buildPalette } from '../theme';
 import { FREE_THEME, usePremium } from '../premium';
 
-const LABEL = { sage: 'themeSage', rose: 'themeRose', lavender: 'themeLavender', ocean: 'themeOcean', cozy: 'themeCozy', navy: 'themeNavy', vanilla: 'themeVanilla', professional: 'themeProfessional', summer: 'themeSummer', forest: 'themeForest', sunset: 'themeSunset' };
+// Every theme in theme.js is named `theme<Key>` in the translations (themeMidnight, themeSepia, ...), so new themes need no edit here.
+const labelKey = (key) => `theme${key.charAt(0).toUpperCase()}${key.slice(1)}`;
 
 /** Four colour-theme swatches. `dark` previews each theme in the current mode. */
 export default function ThemePicker({ t, c, rtl, value, onChange, dark }) {
@@ -21,7 +22,7 @@ export default function ThemePicker({ t, c, rtl, value, onChange, dark }) {
             key={key}
             testID={`theme-${key}`}
             accessibilityRole="button"
-            accessibilityLabel={t[LABEL[key]]}
+            accessibilityLabel={(t[labelKey(key)] || key)}
             accessibilityState={{ selected }}
             onPress={() => (locked ? request('themes') : onChange(key))}
             style={{ width: '22%', alignItems: 'center', gap: 6 }}
@@ -36,7 +37,7 @@ export default function ThemePicker({ t, c, rtl, value, onChange, dark }) {
               {selected ? <Check size={18} color={p.onAccent} /> : locked ? <Lock size={14} color={p.onAccent} /> : null}
             </View>
             <Text style={{ color: c.ink, fontSize: 11, fontWeight: selected ? '700' : '500' }} numberOfLines={1}>
-              {t[LABEL[key]]}
+              {(t[labelKey(key)] || key)}
             </Text>
           </Pressable>
         );

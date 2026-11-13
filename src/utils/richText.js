@@ -110,6 +110,12 @@ export function sanitizeHtml(input, opts = {}) {
   const stack = []; // open block / list tags, to close them properly
   const inlineOpen = []; // open inline tags in the current block
   const spanKept = [];
+  const listTodo = []; // for each open list: is it a checklist?
+  const popBlock = () => {
+    const t = stack.pop();
+    if (t === 'ul' || t === 'ol') listTodo.pop();
+    return t;
+  };
   let skipUntil = null;
   let loose = false; // inside an implicit <p>
 
@@ -223,10 +229,17 @@ export function sanitizeHtml(input, opts = {}) {
       // a block opened inside a text block closes it first (no nested p/h/li)
       while (stack.length && ['p', 'h1', 'h2', 'h3'].includes(stack[stack.length - 1]) && tag !== 'li') {
         closeInline();
-        out.push(`</${stack.pop()}>`);
+        out.push(`</${popBlock()}>`);
       }
       const isList = ['ul', 'ol'].includes(tag);
-      const attrs = isList ? blockAttrs(m[2] || '').replace(/ style="[^"]*"/, '') : blockAttrs(m[2] || '');
+      let attrs = isList ? blockAttrs(m[2] || '').replace(/ style="[^"]*"/, '') : blockAttrs(m[2] || '');
+      if (isList) {
+        const todo = tag === 'ul' && /data-todo/i.test(m[2] || '');
+        if (todo) attrs += ' data-todo="1"';
+        listTodo.push(todo);
+      } else if (tag === 'li' && listTodo[listTodo.length - 1] && /data-done/i.test(m[2] || '')) {
+        attrs += ' data-done="1"';
+      }
       out.push(`<${tag}${attrs}>`);
       stack.push(tag);
     } else {
@@ -235,14 +248,14 @@ export function sanitizeHtml(input, opts = {}) {
       if (i < 0) continue;
       while (stack.length > i) {
         closeInline();
-        out.push(`</${stack.pop()}>`);
+        out.push(`</${popBlock()}>`);
       }
     }
   }
   closeLoose();
   while (stack.length) {
     closeInline();
-    out.push(`</${stack.pop()}>`);
+    out.push(`</${popBlock()}>`);
   }
   return out.join('');
 }
@@ -271,13 +284,13 @@ export function htmlToPlainText(html) {
       lines.push(cur);
       cur = '';
     } else if (name === 'ul' || name === 'ol') {
-      if (!closing) listStack.push({ type: name, n: 0 });
+      if (!closing) listStack.push({ type: name, n: 0, todo: name === 'ul' && /data-todo/i.test(m[2] || '') });
       else listStack.pop();
     } else if (name === 'li') {
       if (!closing) {
         const top = listStack[listStack.length - 1];
         if (top) top.n += 1;
-        cur = top && top.type === 'ol' ? `${top.n}. ` : '• ';
+        cur = top && top.type === 'ol' ? `${top.n}. ` : top && top.todo ? (/data-done/i.test(m[2] || '') ? '☑ ' : '☐ ') : '• ';
       } else flush(true);
     } else if (name === 'hr') {
       if (!closing) flush();

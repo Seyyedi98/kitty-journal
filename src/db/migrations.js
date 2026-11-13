@@ -119,6 +119,25 @@ export const MIGRATIONS = [
   `
   ALTER TABLE entries ADD COLUMN font TEXT;
   `,
+  // v7 — time capsule: ISO instant until which the entry is sealed (NULL = a normal entry)
+  `
+  ALTER TABLE entries ADD COLUMN unlock_at TEXT;
+  `,
+  // v8 — notebooks. entries.notebook_id NULL = the default notebook ("Personal", not stored as a row).
+  `
+  CREATE TABLE IF NOT EXISTS notebooks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    uuid TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    name_key TEXT NOT NULL,
+    color TEXT NOT NULL DEFAULT 'sage',
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  ALTER TABLE entries ADD COLUMN notebook_id INTEGER;
+  CREATE INDEX IF NOT EXISTS idx_entries_notebook ON entries(notebook_id);
+  `,
 ];
 
 export const LATEST_VERSION = MIGRATIONS.length;
@@ -215,6 +234,18 @@ export async function runMigrations(db) {
       await db.execAsync(REPAIR_V4);
     });
   }
+  await db.execAsync(`
+    CREATE TABLE IF NOT EXISTS notebooks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      uuid TEXT NOT NULL UNIQUE,
+      name TEXT NOT NULL,
+      name_key TEXT NOT NULL,
+      color TEXT NOT NULL DEFAULT 'sage',
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+  `);
   const cols = new Set((await db.getAllAsync('PRAGMA table_info(entries)')).map((r) => r.name));
   const addCols = [
     ['deleted_at', 'TEXT'],
@@ -223,12 +254,15 @@ export async function runMigrations(db) {
     ['uuid', 'TEXT'],
     ['body_html', 'TEXT'],
     ['font', 'TEXT'],
+    ['unlock_at', 'TEXT'],
+    ['notebook_id', 'INTEGER'],
   ].filter(([n]) => !cols.has(n));
   if (addCols.length) {
     await db.withTransactionAsync(async () => {
       for (const [n, def] of addCols) await db.execAsync(`ALTER TABLE entries ADD COLUMN ${n} ${def}`);
     });
   }
+  await db.execAsync('CREATE INDEX IF NOT EXISTS idx_entries_notebook ON entries(notebook_id)');
   // Same for the v4 side tables (columns only; every added column has a default).
   const sideCols = {
     attachments: [

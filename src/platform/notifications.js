@@ -106,3 +106,59 @@ export function onReminderTapped(callback) {
     .catch(() => {});
   return () => sub.remove();
 }
+
+/* ------------------------- time-capsule unlocks ------------------------- */
+// One one-shot notification per sealed capsule, fired at its unlock time. Re-planned from scratch like the reminders.
+const CAPSULE_TAG = 'kitty-journal-capsule';
+
+async function cancelCapsules() {
+  const all = await Notifications.getAllScheduledNotificationsAsync();
+  for (const n of all) {
+    if (n.content && n.content.data && n.content.data.tag === CAPSULE_TAG) {
+      await Notifications.cancelScheduledNotificationAsync(n.identifier);
+    }
+  }
+}
+
+/**
+ * @param {Array<{id:number, title:string, unlock_at:string}>} capsules  still-sealed capsules (repository.listSealedCapsules)
+ * @param {{title:string, body:(title:string)=>string, channelName:string}} text
+ * @returns {Promise<number>} how many were scheduled
+ */
+export async function applyCapsuleNotifications(capsules, text) {
+  await cancelCapsules();
+  const future = (capsules || []).filter((c) => new Date(c.unlock_at).getTime() > Date.now() + 5000);
+  if (!future.length) return 0;
+  await ensureChannel(text.channelName);
+  let n = 0;
+  // OS limits (iOS: 64 pending) — the soonest ones matter most; the rest are re-planned on the next app start.
+  for (const c of future.slice(0, 40)) {
+    try {
+      await Notifications.scheduleNotificationAsync({
+        content: { title: text.title, body: text.body(c.title), data: { tag: CAPSULE_TAG, action: 'open-capsule', entryId: c.id } },
+        trigger: {
+          type: Notifications.SchedulableTriggerInputTypes.DATE,
+          date: new Date(c.unlock_at),
+          ...(channelReady ? { channelId: CHANNEL_ID } : {}),
+        },
+      });
+      n += 1;
+    } catch (e) {
+      console.warn('[kitty-journal] capsule notification failed:', e && e.message);
+    }
+  }
+  return n;
+}
+
+/** Calls back with the entry id when the user taps a capsule notification. Returns an unsubscribe fn. */
+export function onCapsuleTapped(callback) {
+  const handle = (response) => {
+    const data = response && response.notification && response.notification.request.content.data;
+    if (data && data.tag === CAPSULE_TAG) callback(data.entryId);
+  };
+  const sub = Notifications.addNotificationResponseReceivedListener(handle);
+  Promise.resolve(Notifications.getLastNotificationResponseAsync?.())
+    .then((r) => { if (r) handle(r); })
+    .catch(() => {});
+  return () => sub.remove();
+}

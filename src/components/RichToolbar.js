@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { usePremium } from '../premium';
 import { StyleSheet, View } from 'react-native';
 import {
-  Bold, Heading1, Heading2, Highlighter, Italic, List, ListOrdered, Palette, PilcrowLeft, PilcrowRight, Redo2, Strikethrough, Type, Underline, Undo2, X,
+  Bold, Heading1, Heading2, Highlighter, Italic, List, ListChecks, ListOrdered, Palette, PilcrowLeft, PilcrowRight, Redo2, Strikethrough, Type, Underline, Undo2, X,
 } from 'lucide-react-native';
 import { ScrollView, Text } from '../ui';
 import { PressableScale } from '../motion';
@@ -66,6 +66,7 @@ const GROUPS = [
   [
     { cmd: 'ul', Icon: List, key: 'fmtBullets', list: 'ul' },
     { cmd: 'ol', Icon: ListOrdered, key: 'fmtNumbered', list: 'ol' },
+    { cmd: 'todo', Icon: ListChecks, key: 'fmtChecklist', list: 'todo' },
   ],
   [
     { cmd: 'ltr', Icon: PilcrowRight, key: 'fmtLtr', dir: 'ltr' },
@@ -190,7 +191,7 @@ export default function RichToolbar({ t, c, state = {}, onCommand, bottomInset =
                   testID={`fmt-${cmd}`}
                   onPress={() => onCommand(cmd)}
                   accessibilityRole="button"
-                  accessibilityLabel={t[key]}
+                  accessibilityLabel={t[key] || (cmd === 'todo' ? 'Checklist' : '')}
                   accessibilityState={{ selected: active, disabled }}
                   style={[s.btn, active && { backgroundColor: c.sage }, disabled && { opacity: 0.35 }]}
                 >

@@ -9,7 +9,7 @@ import { useAccount } from '../account/AccountContext';
 
 const PLUS_IMAGE = require('../../assets/images/plus-cat.png');
 
-const THEME_LABELS = { sage: 'themeSage', rose: 'themeRose', lavender: 'themeLavender', ocean: 'themeOcean', cozy: 'themeCozy', navy: 'themeNavy', vanilla: 'themeVanilla', professional: 'themeProfessional', summer: 'themeSummer', forest: 'themeForest', sunset: 'themeSunset' };
+const themeLabelKey = (key) => `theme${String(key).charAt(0).toUpperCase()}${String(key).slice(1)}`;
 
 /**
  * Settings. `onOpen(name)` navigates to a sub-screen; the rows shown here are
@@ -96,7 +96,7 @@ export default function SettingsScreen({
         <LinkRow
           icon={Palette}
           title={t.appearance}
-          subtitle={`${t[THEME_LABELS[theme]] || ''} · ${t[appearance === 'system' ? 'system' : appearance === 'dark' ? 'dark' : 'light']}`}
+          subtitle={`${t[themeLabelKey(theme)] || ''} · ${t[appearance === 'system' ? 'system' : appearance === 'dark' ? 'dark' : 'light']}`}
           onPress={() => onOpen('appearance')}
           trailing={chevron}
           c={c}
@@ -112,7 +112,6 @@ export default function SettingsScreen({
         <LinkRow icon={Bell} title={t.reminders} onPress={() => onOpen('reminders')} trailing={chevron} c={c} rtl={rtl} />
         <LinkRow
           icon={Trash2}
-          warm
           title={t.trash}
           subtitle={trashCount ? fmt(t.trashCount, { n: num(trashCount) }) : t.trashEmpty}
           onPress={() => onOpen('trash')}

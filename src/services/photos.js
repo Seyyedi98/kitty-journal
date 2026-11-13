@@ -12,6 +12,7 @@
 // verifying nothing references them.
 
 import {
+  updateAttachmentFile,
   deleteAttachment,
   emptyTrash,
   insertAttachment,
@@ -21,11 +22,18 @@ import {
   purgeEntry,
 } from '../db/repository';
 
-export const MAX_EDGE = 2048;
-export const QUALITY = 0.82;
+// Stored photos: longest side at most 1600 px and at most 350 KB. The encoder starts at a high quality and only
+// steps down as far as needed to fit; when even the lowest quality is too big it shrinks the picture a little
+// instead of squeezing quality further.
+export const MAX_EDGE = 1600;
+export const MAX_BYTES = 350 * 1024;
+export const QUALITY_STEPS = [0.9, 0.85, 0.8, 0.75, 0.7];
+export const SHRINK_EDGES = [1480, 1360, 1240]; // used only if 0.7 is still over MAX_BYTES
+export const SHRINK_QUALITY = 0.78;
+export const QUALITY = QUALITY_STEPS[0];
 export const THUMB_EDGE = 360;
 export const THUMB_QUALITY = 0.7;
-export const KEEP_AS_IS_BYTES = 2.5 * 1024 * 1024;
+export const KEEP_AS_IS_BYTES = MAX_BYTES;
 
 // Only files that look like ours are ever deleted by the cleanup code.
 export const OWN_FILE_RE = /^[a-f0-9]{16,64}(_t)?\.jpg$/;
@@ -81,6 +89,38 @@ export function planImageProcessing(asset) {
 
 export const attachmentUri = (fs, name) => `${fs.attachmentsDir}${name}`;
 
+const resizeFor = (w, h, edge) => (Math.max(w, h) > edge ? (w >= h ? { width: edge } : { height: edge }) : null);
+
+/**
+ * Re-encode `uri` as a JPEG that fits MAX_BYTES, always decoding from the same source (never a copy of a copy).
+ * @returns {{out:{uri,width,height}, size:number, quality:number, fits:boolean}} the best result; `fits` is false
+ *          only if even the smallest attempt stayed over the limit (the smallest attempt is returned then).
+ */
+export async function encodeWithinLimit(deps, uri, width, height, temps = []) {
+  const { fs, manipulate } = deps;
+  let w = Number(width) || 0;
+  let h = Number(height) || 0;
+  let last = null;
+  const attempt = async (edge, quality) => {
+    const out = await manipulate(uri, { resize: w && h ? resizeFor(w, h, edge) : null, quality });
+    temps.push(out.uri);
+    if (!w || !h) {
+      w = out.width;
+      h = out.height;
+    }
+    const size = (await fs.size(out.uri)) || 0;
+    last = { out, size, quality, fits: size > 0 && size <= MAX_BYTES };
+    return last;
+  };
+  for (const q of QUALITY_STEPS) {
+    if ((await attempt(MAX_EDGE, q)).fits) return last;
+  }
+  for (const edge of SHRINK_EDGES) {
+    if ((await attempt(edge, SHRINK_QUALITY)).fits) return last;
+  }
+  return last;
+}
+
 async function bestEffortRemove(fs, uris) {
   for (const uri of uris) {
     try {
@@ -112,11 +152,10 @@ export async function importPhoto(db, deps, entryId, asset) {
     let height = Number(asset.height) || null;
     const plan = planImageProcessing(asset);
     if (plan.recompress) {
-      const out = await manipulate(asset.uri, { resize: plan.resize, quality: QUALITY });
-      source = out.uri;
-      temps.push(out.uri);
-      width = out.width;
-      height = out.height;
+      const r = await encodeWithinLimit(deps, asset.uri, width, height, temps);
+      source = r.out.uri;
+      width = r.out.width;
+      height = r.out.height;
     }
 
     const free = await fs.freeBytes?.();
@@ -236,6 +275,85 @@ export async function cleanOrphanFiles(db, fs) {
     }
     return { skipped: false, removed };
   } finally {
+    release();
+  }
+}
+
+const longestOf = (row) => Math.max(Number(row.width) || 0, Number(row.height) || 0);
+
+/**
+ * Photos already stored that are over the limits (bigger than MAX_BYTES or wider than MAX_EDGE), biggest first.
+ * @returns {{total:number, candidates:{row:object,size:number}[], bytes:number}}
+ */
+export async function findOversizedPhotos(db, fs) {
+  const rows = await listAttachmentRows(db);
+  const candidates = [];
+  let bytes = 0;
+  for (const row of rows) {
+    const size = (await fs.size(attachmentUri(fs, row.file_name))) || 0;
+    if (!size) continue;
+    if (size > MAX_BYTES || longestOf(row) > MAX_EDGE) {
+      candidates.push({ row, size });
+      bytes += size;
+    }
+  }
+  candidates.sort((a, b) => b.size - a.size);
+  return { total: rows.length, candidates, bytes };
+}
+
+/**
+ * Build the reduced version of a stored photo WITHOUT changing anything, so the user can compare.
+ * @returns {{original:{uri,size,width,height}, reduced:{uri,size,width,height,quality}, cleanup:()=>Promise<void>}}
+ */
+export async function previewReduction(deps, row) {
+  const { fs } = deps;
+  const uri = attachmentUri(fs, row.file_name);
+  const temps = [];
+  const cleanup = async () => bestEffortRemove(fs, temps.filter((u) => u && !String(u).startsWith(fs.attachmentsDir)));
+  try {
+    const size = (await fs.size(uri)) || 0;
+    const r = await encodeWithinLimit(deps, uri, row.width, row.height, temps);
+    return {
+      original: { uri, size, width: row.width || null, height: row.height || null },
+      reduced: { uri: r.out.uri, size: r.size, width: r.out.width, height: r.out.height, quality: r.quality },
+      cleanup,
+    };
+  } catch (error) {
+    await cleanup();
+    throw error;
+  }
+}
+
+/**
+ * Replace one stored photo by a reduced copy (new file, row updated, old file removed). Never makes a file bigger.
+ * @returns {{status:'reduced'|'skipped'|'missing'|'failed', before?:number, after?:number}}
+ */
+export async function reducePhoto(db, deps, row) {
+  const { fs } = deps;
+  const release = beginFileOp();
+  const temps = [];
+  let dest = null;
+  try {
+    const uri = attachmentUri(fs, row.file_name);
+    const before = (await fs.size(uri)) || 0;
+    if (!before) return { status: 'missing' };
+    if (before <= MAX_BYTES && longestOf(row) > 0 && longestOf(row) <= MAX_EDGE) return { status: 'skipped', before, after: before };
+    const r = await encodeWithinLimit(deps, uri, row.width, row.height, temps);
+    if (!r.size || (r.size >= before && longestOf(row) <= MAX_EDGE)) return { status: 'skipped', before, after: before };
+    const fileName = `${await newUid(db)}.jpg`;
+    dest = attachmentUri(fs, fileName);
+    await fs.copy(r.out.uri, dest);
+    const after = (await fs.size(dest)) || 0;
+    if (!after) throw new PhotoError('copy-failed', 'Copied image is missing or empty');
+    await updateAttachmentFile(db, row.id, { file_name: fileName, size_bytes: after, width: r.out.width, height: r.out.height });
+    dest = null; // committed
+    await removeFiles(fs, [row.file_name]);
+    return { status: 'reduced', before, after };
+  } catch (error) {
+    if (dest) await bestEffortRemove(fs, [dest]);
+    return { status: 'failed', message: String((error && error.message) || error) };
+  } finally {
+    await bestEffortRemove(fs, temps.filter((u) => u && !String(u).startsWith(fs.attachmentsDir)));
     release();
   }
 }

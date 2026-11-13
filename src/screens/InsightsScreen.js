@@ -1,7 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import MoodFace from '../components/MoodFace';
+import MoodYear from '../components/MoodYear';
 import { StyleSheet, View } from 'react-native';
-import { BookOpen, Star } from 'lucide-react-native';
+import { Check, Crown } from 'lucide-react-native';
 import { ScrollView, Text } from '../ui';
 import { Button, Card, Note, Segmented } from '../components/common';
 import { usePremium } from '../premium';
@@ -10,6 +11,7 @@ import { EMOTIONS } from '../utils/emotions';
 import { RANGE_PRESETS, computeInsights, rangeFor } from '../utils/insights';
 import { calendarDateKey, formatDateKey, weekStartFor } from '../calendar';
 import { fmt } from '../i18n';
+import { mergeDayMoods } from '../utils/wrapped';
 
 const CHART_H = 84;
 
@@ -62,17 +64,7 @@ export default function InsightsScreen({ t, c, rtl, language, calendar, today, e
 
   // One mood per day: the Home "How are you feeling today?" choice wins; otherwise the mood picked in that
   // day's most recently edited entry is used. A day with no mood is missing data, never "neutral".
-  const dayMoods = useMemo(() => {
-    const out = { ...dailyMoods };
-    const latest = {};
-    for (const e of entries) {
-      if (!e.mood || out[e.journal_date]) continue;
-      const prev = latest[e.journal_date];
-      if (!prev || String(e.updated_at) > String(prev.updated_at)) latest[e.journal_date] = e;
-    }
-    for (const [day, e] of Object.entries(latest)) out[day] = e.mood;
-    return out;
-  }, [entries, dailyMoods]);
+  const dayMoods = useMemo(() => mergeDayMoods(entries, dailyMoods), [entries, dailyMoods]);
 
   // Free: always the last 30 days, simple numbers and the mood summary.
   const shownPreset = premium ? preset : '30d';
@@ -104,7 +96,17 @@ export default function InsightsScreen({ t, c, rtl, language, calendar, today, e
     [fmt(t.writingDaysOf, { a: num(totals.writingDays), b: num(totals.rangeDays) }), t.writingDays],
     [num(totals.words), t.totalWords],
     [num(totals.avgWords), t.avgWords],
+    [num(totals.favorites), t.favorites],
+    [num(entries.length), t.rangeAll],
   ];
+
+  const emotionRows = data.topEmotions.map((x) => ({
+    key: x.key,
+    face: EMOTIONS.find((e) => e.key === x.key)?.face,
+    label: t[`emotion_${x.key}`] || x.key,
+    count: x.count,
+    countText: fmt(t.timesCount, { n: num(x.count) }),
+  }));
 
   return (
     <ScrollView contentContainerStyle={s.page}>
@@ -120,42 +122,20 @@ export default function InsightsScreen({ t, c, rtl, language, calendar, today, e
 
       {totals.entries === 0 && entries.length === 0 ? <Note c={c} rtl={rtl}>{t.insightsEmpty}</Note> : null}
 
-      <View style={[s.grid, rtl && s.rowReverse]}>
-        {summary.map(([value, label], i) => (
-          <View key={i} style={[s.stat, { backgroundColor: c.card, borderColor: c.line }]}>
-            <Text style={[s.statNumber, { color: c.sageDark }]}>{value}</Text>
-            <Text style={[s.statLabel, { color: c.muted }]}>{label}</Text>
-          </View>
-        ))}
-      </View>
-      <View style={[s.grid, rtl && s.rowReverse]}>
-        <View style={[s.stat, { backgroundColor: c.card, borderColor: c.line }]}>
-          <Star size={17} color={c.sageDark} />
-          <Text style={[s.statNumber, { color: c.sageDark }]}>{num(totals.favorites)}</Text>
-          <Text style={[s.statLabel, { color: c.muted }]}>{t.favorites}</Text>
+      {/* 1. The numbers: one tidy 3 x 2 grid */}
+      {[summary.slice(0, 3), summary.slice(3)].map((row, r) => (
+        <View key={r} style={[s.grid, rtl && s.rowReverse]}>
+          {row.map(([value, label], i) => (
+            <View key={i} style={[s.stat, { backgroundColor: c.card, borderColor: c.line }]}>
+              <Text numberOfLines={1} adjustsFontSizeToFit style={[s.statNumber, { color: c.sageDark }]}>{value}</Text>
+              <Text numberOfLines={2} style={[s.statLabel, { color: c.muted }]}>{label}</Text>
+            </View>
+          ))}
         </View>
-        <View style={[s.stat, { backgroundColor: c.card, borderColor: c.line }]}>
-          <BookOpen size={17} color={c.sageDark} />
-          <Text style={[s.statNumber, { color: c.sageDark }]}>{num(entries.length)}</Text>
-          <Text style={[s.statLabel, { color: c.muted }]}>{t.rangeAll}</Text>
-        </View>
-      </View>
+      ))}
 
-      {premium ? (
-      <Card title={t.monthlyActivity} c={c} rtl={rtl}>
-        <Bars items={data.monthly.map((m) => ({ label: monthName(m), value: m.count }))} max={monthMax} c={c} rtl={rtl} color={c.accent} format={num} />
-      </Card>
-      ) : null}
-
-      {premium ? (
-      <Card title={t.activeWeekdays} c={c} rtl={rtl}>
-        {totals.entries === 0 ? (
-          <Text style={{ color: c.muted, fontSize: 12, textAlign: align }}>{t.noData}</Text>
-        ) : (
-          <Bars items={data.weekdays.map((w) => ({ label: weekdayName(w.day), value: w.count }))} max={weekMax} c={c} rtl={rtl} color={c.accent} format={num} />
-        )}
-      </Card>
-      ) : null}
+      {/* 2. Mood: the year at a glance, then the split for the chosen range */}
+      {premium ? <MoodYear t={t} c={c} rtl={rtl} language={language} calendar={calendar} today={today} dayMoods={dayMoods} /> : null}
 
       <Card title={t.moodDistribution} c={c} rtl={rtl}>
         {data.mood.recordedDays === 0 ? (
@@ -184,6 +164,24 @@ export default function InsightsScreen({ t, c, rtl, language, calendar, today, e
         </Card>
       ) : null}
 
+      {/* 3. Writing habits */}
+      {premium ? (
+        <Card title={t.monthlyActivity} c={c} rtl={rtl}>
+          <Bars items={data.monthly.map((m) => ({ label: monthName(m), value: m.count }))} max={monthMax} c={c} rtl={rtl} color={c.accent} format={num} />
+        </Card>
+      ) : null}
+
+      {premium ? (
+        <Card title={t.activeWeekdays} c={c} rtl={rtl}>
+          {totals.entries === 0 ? (
+            <Text style={{ color: c.muted, fontSize: 12, textAlign: align }}>{t.noData}</Text>
+          ) : (
+            <Bars items={data.weekdays.map((w) => ({ label: weekdayName(w.day), value: w.count }))} max={weekMax} c={c} rtl={rtl} color={c.accent} format={num} />
+          )}
+        </Card>
+      ) : null}
+
+      {/* 4. What you write about */}
       {premium && data.topTags.length ? (
         <Card title={t.topTags} c={c} rtl={rtl}>
           <Rows rows={data.topTags.map((x) => ({ key: x.name, label: `#${x.name}`, count: x.count, countText: fmt(t.timesCount, { n: num(x.count) }) }))} c={c} rtl={rtl} color={c.accent} />
@@ -192,18 +190,7 @@ export default function InsightsScreen({ t, c, rtl, language, calendar, today, e
 
       {premium && data.topEmotions.length ? (
         <Card title={t.topEmotions} c={c} rtl={rtl}>
-          <Rows
-            rows={data.topEmotions.map((x) => ({
-              key: x.key,
-              face: EMOTIONS.find((e) => e.key === x.key)?.face,
-              label: t[`emotion_${x.key}`] || x.key,
-              count: x.count,
-              countText: fmt(t.timesCount, { n: num(x.count) }),
-            }))}
-            c={c}
-            rtl={rtl}
-            color={c.accent}
-          />
+          <Rows rows={emotionRows} c={c} rtl={rtl} color={c.accent} />
           {data.topEmotions.some((x) => x.avgIntensity != null) ? (
             <Text style={{ color: c.muted, fontSize: 11, textAlign: align }}>
               {data.topEmotions.filter((x) => x.avgIntensity != null).map((x) => `${t[`emotion_${x.key}`] || x.key}: ${fmt(t.averageStrength, { n: num(x.avgIntensity) })}`).join(' · ')}
@@ -213,10 +200,22 @@ export default function InsightsScreen({ t, c, rtl, language, calendar, today, e
       ) : null}
 
       {!premium ? (
-        <Card title={t.insightsLockedTitle} c={c} rtl={rtl}>
-          <Text style={{ color: c.muted, fontSize: 13, lineHeight: 20, textAlign: align }}>{t.insightsLockedBody}</Text>
-          <Button label={t.premiumSee} onPress={openPremium} c={c} rtl={rtl} variant="primary" />
-        </Card>
+        <View style={[s.plus, { backgroundColor: c.accentSoft, borderColor: c.line }]}>
+          <View style={[s.plusBadge, { backgroundColor: c.accent }]}>
+            <Crown size={22} color="#FFFFFF" />
+          </View>
+          <Text style={{ color: c.ink, fontSize: 18, fontWeight: '800', textAlign: 'center' }}>{t.insightsLockedTitle}</Text>
+          <Text style={{ color: c.muted, fontSize: 13, lineHeight: 20, textAlign: 'center' }}>{t.insightsLockedBody}</Text>
+          <View style={{ alignSelf: 'stretch', gap: 9 }}>
+            {[t.moodYear, t.insightsPoint1, t.insightsPoint2, t.insightsPoint3].map((p, i) => (
+              <View key={i} style={[s.plusRow, rtl && s.rowReverse]}>
+                <Check size={16} color={c.sageDark} />
+                <Text style={{ color: c.ink, fontSize: 13, flex: 1, textAlign: align }}>{p}</Text>
+              </View>
+            ))}
+          </View>
+          <Button label={t.premiumSee} onPress={openPremium} c={c} rtl={rtl} variant="primary" style={{ alignSelf: 'stretch' }} />
+        </View>
       ) : null}
 
       <Note c={c} rtl={rtl}>{t.insightsNote}</Note>
@@ -225,13 +224,16 @@ export default function InsightsScreen({ t, c, rtl, language, calendar, today, e
 }
 
 const s = StyleSheet.create({
+  plus: { borderWidth: 1, borderRadius: 22, padding: 22, gap: 14, alignItems: 'center' },
+  plusBadge: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
+  plusRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   page: { paddingTop: 25, paddingBottom: 22, gap: 14 },
   eyebrow: { fontSize: 11, fontWeight: '700', letterSpacing: 1.4, textTransform: 'uppercase' },
   title: { fontSize: 28, fontWeight: '600' },
   grid: { flexDirection: 'row', gap: 10 },
   rowReverse: { flexDirection: 'row-reverse' },
-  stat: { flex: 1, borderWidth: 1, borderRadius: 18, paddingVertical: 14, paddingHorizontal: 10, alignItems: 'center', gap: 4 },
-  statNumber: { fontSize: 18, fontWeight: '700', textAlign: 'center' },
+  stat: { flex: 1, minHeight: 74, borderWidth: 1, borderRadius: 18, paddingVertical: 12, paddingHorizontal: 8, alignItems: 'center', justifyContent: 'center', gap: 4 },
+  statNumber: { fontSize: 18, fontWeight: '700', textAlign: 'center', maxWidth: '100%' },
   statLabel: { fontSize: 10, textAlign: 'center' },
   bars: { flexDirection: 'row', gap: 6, alignItems: 'flex-end' },
   barCol: { flex: 1, alignItems: 'center', gap: 4 },

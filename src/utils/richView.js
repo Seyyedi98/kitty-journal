@@ -17,7 +17,7 @@ function styleOf(attrs) {
 
 /**
  * @returns {Array<{type:'p'|'h1'|'h2'|'h3'|'li'|'hr', dir:string|null, align:string|null, quote:boolean,
- *                  marker:string|null, runs:Array<{text:string, bold?:true, italic?:true, underline?:true,
+ *                  marker:string|null, todo?:true, done?:boolean, runs:Array<{text:string, bold?:true, italic?:true, underline?:true,
  *                  strike?:true, color?:string, background?:string, font?:string}>}>}
  */
 export function htmlToBlocks(html) {
@@ -29,10 +29,11 @@ export function htmlToBlocks(html) {
   const marks = { strong: 0, em: 0, u: 0, s: 0 };
   const spans = [];
 
-  const open = (type, attrs, marker) => {
+  const open = (type, attrs, marker, extra) => {
     const dir = /dir="(ltr|rtl|auto)"/i.exec(attrs || '');
     const al = styleOf(attrs).align;
     cur = { type, dir: dir ? dir[1] : null, align: al || null, quote: quote > 0, marker: marker || null, runs: [] };
+    if (extra) Object.assign(cur, extra);
     blocks.push(cur);
   };
   const run = (text) => {
@@ -63,7 +64,7 @@ export function htmlToBlocks(html) {
     const name = m[2].toLowerCase();
     if (name === 'ul' || name === 'ol') {
       if (closing) lists.pop();
-      else lists.push({ ordered: name === 'ol', n: 0 });
+      else lists.push({ ordered: name === 'ol', n: 0, todo: name === 'ul' && /data-todo/i.test(m[3] || '') });
     } else if (name === 'blockquote') {
       quote += closing ? -1 : 1;
       cur = null;
@@ -75,7 +76,10 @@ export function htmlToBlocks(html) {
       else if (name === 'li') {
         const l = lists[lists.length - 1] || { ordered: false, n: 0 };
         l.n += 1;
-        open('li', m[3], l.ordered ? `${l.n}.` : '•');
+        if (l.todo) {
+          const done = /data-done/i.test(m[3] || '');
+          open('li', m[3], done ? '☑' : '☐', { todo: true, done });
+        } else open('li', m[3], l.ordered ? `${l.n}.` : '•');
       } else open(name, m[3]);
     } else if (name === 'br') {
       if (cur) cur.runs.push({ text: '\n' });

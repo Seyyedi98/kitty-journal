@@ -17,6 +17,7 @@ import {
   ChevronRight,
   Heart,
   Image as ImageIcon,
+  Lock,
   MapPin,
   Pin,
   Plus,
@@ -35,6 +36,7 @@ import {
   cleanLocation,
   listEntryAttachments,
   saveEntry,
+  sealCapsule,
   setFavorite,
   setPinned,
   softDeleteEntry,
@@ -54,6 +56,9 @@ import EmotionPicker from './EmotionPicker';
 import PlaceField from './PlaceField';
 import RichEditor from './RichEditor';
 import RichToolbar from './RichToolbar';
+import CapsuleSection, { atMorning } from './CapsuleSection';
+import { usePremium } from '../premium';
+import { requestPermission } from '../platform/notifications';
 import { entryToEditorHtml, htmlToPlainText, isHtmlEmpty } from '../utils/richText';
 
 const fs = deps.fs;
@@ -109,6 +114,9 @@ export default function EditorModal({
   runExternal = (fn) => fn(),
 }) {
   const db = useSQLiteContext();
+  const { premium, request } = usePremium();
+  const [capsuleDate, setCapsuleDate] = useState(() => atMorning(new Date(Date.now() + 30 * 86400000)));
+  const [sealing, setSealing] = useState(false);
   const [title, setTitle] = useState('');
   const [body, setBody] = useState(''); // plain text, derived from bodyHtml (word count, empty checks)
   const [bodyHtml, setBodyHtml] = useState('');
@@ -249,6 +257,8 @@ export default function EditorModal({
     setPlaceMessage('');
     setPhotoMessage('');
     setViewerIndex(null);
+    setCapsuleDate(atMorning(new Date(Date.now() + 30 * 86400000)));
+    setSealing(false);
     resetAutosave(start);
     if (entry?.id) {
       listEntryAttachments(db, entry.id)
@@ -496,6 +506,44 @@ export default function EditorModal({
       });
     });
   }, []);
+
+  // Time capsule: save, lock until the chosen morning, stop autosave for good, close. Plus only.
+  const sealNow = () => {
+    if (!premium) {
+      request('timecapsule');
+      return;
+    }
+    if (!title.trim() && isHtmlEmpty(bodyHtml)) {
+      Dialog.alert(t.capsule, t.capsuleEmpty);
+      return;
+    }
+    const dateText = formatDateKey(dateKey(capsuleDate), language, calendar, { dateStyle: 'full' });
+    Dialog.alert(t.capsuleSealTitle, fmt(t.capsuleSealConfirm, { date: dateText }), [
+      { text: t.cancel, style: 'cancel' },
+      {
+        text: t.capsuleSeal,
+        style: 'destructive',
+        onPress: async () => {
+          setSealing(true);
+          try {
+            const id = await ensureEntryExists();
+            if (!id) throw new Error('save-failed');
+            await autosave.flush().catch(() => {});
+            await sealCapsule(db, id, capsuleDate.toISOString());
+            deletedRef.current = true; // autosave must not touch a sealed entry any more
+            try { await requestPermission(); } catch { /* the capsule works without notifications */ }
+            onChanged?.();
+            onClose();
+            Dialog.alert(t.capsule, t.capsuleSealed);
+          } catch {
+            Dialog.alert(t.capsule, t.capsuleFailed);
+          } finally {
+            setSealing(false);
+          }
+        },
+      },
+    ]);
+  };
 
   const removeTag = (name) => setTags((prev) => prev.filter((x) => x !== name));
 
@@ -777,6 +825,22 @@ export default function EditorModal({
               rtl={rtl}
               insets={insets}
             />
+
+            {!entry?.unlock_at ? (
+              <Section icon={Lock} title={t.capsule} hint={t.capsuleHint} c={c} rtl={rtl} index={5}>
+                <CapsuleSection
+                  value={capsuleDate}
+                  onChange={setCapsuleDate}
+                  onSeal={sealNow}
+                  busy={sealing}
+                  t={t}
+                  c={c}
+                  rtl={rtl}
+                  language={language}
+                  calendar={calendar}
+                />
+              </Section>
+            ) : null}
 
             {entry || entryIdRef.current ? (
               <Pressable onPress={confirmDelete} style={[s.deleteButton, { borderColor: c.danger }]} accessibilityRole="button">

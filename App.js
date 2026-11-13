@@ -64,9 +64,13 @@ import {
   BookOpen,
   MapPin,
   Settings2,
+  Lock,
   Image as ImageIcon,
 } from "lucide-react-native";
 import { translations } from "./src/i18n";
+import { capsuleText } from "./src/i18n/capsule";
+import { maskLockedList, nextUnlockDelay } from "./src/utils/capsule";
+import { fmt } from "./src/i18n";
 import {
   dateKey,
   parseDateKey,
@@ -107,6 +111,7 @@ import {
 import { runMigrations } from "./src/db/migrations";
 import {
   listEntries,
+  listSealedCapsules,
   listTags,
   listDailyMoods,
   countDeletedEntries,
@@ -145,6 +150,8 @@ import { useAppLock } from "./src/hooks/useAppLock";
 import {
   initNotifications,
   onReminderTapped,
+  applyCapsuleNotifications,
+  onCapsuleTapped,
 } from "./src/platform/notifications";
 import { syncReminders } from "./src/services/reminderSync";
 import { numberFormatter } from "./src/utils/format";
@@ -256,7 +263,10 @@ function AppShell() {
   const shortestSide = Math.min(width, height);
 
   setUiLanguage(language);
-  const t = translations[language] || translations.en;
+  const t = useMemo(
+    () => ({ ...(translations[language] || translations.en), ...(capsuleText[language] || capsuleText.en) }),
+    [language],
+  );
   const rtl = language === "fa";
   const effectiveCalendar =
     calendarType === "default"
@@ -295,7 +305,7 @@ function AppShell() {
       listDailyMoods(db),
       countDeletedEntries(db),
     ]);
-    setEntries(rows);
+    setEntries(maskLockedList(rows)); // sealed time capsules never reach a screen with their content
     setAllTags(tagRows);
     setDailyMoods(moods);
     setTrashCount(trashed);
@@ -360,6 +370,7 @@ function AppShell() {
       console.error("Could not save setting", key, error),
     );
 
+  const hasCapsules = useMemo(() => entries.some((e) => e.unlock_at), [entries]);
   const visibleEntries = useMemo(() => {
     const filtered = applyFilters(entries, filters);
     if (!search.trim()) return filtered;
@@ -391,14 +402,22 @@ function AppShell() {
     setEditorDate(date);
     setEditorVisible(true);
   };
+  const capsuleLockedAlert = (entry) => {
+    const when = formatDateKey(dateKey(new Date(entry.unlock_at)), language, effectiveCalendar, { dateStyle: "full" });
+    Dialog.alert(t.capsuleLockedTitle, fmt(t.capsuleLockedMsg, { date: when }));
+  };
   const openEdit = (entry) => {
+    if (entry.locked) return capsuleLockedAlert(entry);
     setEditing(entry);
     setEditorDate(entry.journal_date);
     setEditorVisible(true);
   };
   // Tapping an entry anywhere opens a read-only preview first; Edit goes on to the editor
   // (and Back from the editor returns to the preview).
-  const openPreview = (entry) => setPreviewId(entry.id);
+  const openPreview = (entry) => {
+    if (entry.locked) return capsuleLockedAlert(entry);
+    setPreviewId(entry.id);
+  };
   const previewEntry =
     previewId == null ? null : entries.find((e) => e.id === previewId) || null;
   useEffect(() => {
@@ -412,6 +431,43 @@ function AppShell() {
     initNotifications();
     return onReminderTapped(() => openNewRef.current());
   }, []);
+  // Time capsules: open them on time (re-read when the next one is due and whenever the app comes to the front),
+  // schedule one notification per sealed capsule, and open the capsule when its notification is tapped.
+  const entriesRef = useRef(entries);
+  entriesRef.current = entries;
+  useEffect(() => {
+    const delay = nextUnlockDelay(entries);
+    if (delay == null) return undefined;
+    const timer = setTimeout(() => refresh(), Math.min(delay + 1000, 6 * 3600 * 1000));
+    return () => clearTimeout(timer);
+  }, [entries, refresh]);
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") refresh();
+    });
+    return () => sub.remove();
+  }, [refresh]);
+  useEffect(() => {
+    if (!ready) return;
+    listSealedCapsules(db)
+      .then((rows) =>
+        applyCapsuleNotifications(rows, {
+          title: t.capsuleNotifTitle,
+          body: (title) => (title ? fmt(t.capsuleNotifBody, { title }) : t.capsuleNotifNoTitle),
+          channelName: t.capsuleChannel,
+        }),
+      )
+      .catch((e) => console.warn("[kitty-journal] capsule notifications:", e && e.message));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, entries, language, db]);
+  useEffect(
+    () =>
+      onCapsuleTapped((id) => {
+        const e = entriesRef.current.find((x) => x.id === id);
+        if (e && !e.locked) setPreviewId(e.id);
+      }),
+    [],
+  );
   useEffect(() => {
     if (ready) syncReminders(db, t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -816,6 +872,7 @@ function AppShell() {
         filters={filters}
         setFilters={setFilters}
         tags={allTags}
+        hasCapsules={hasCapsules}
         entries={visibleEntries}
         isSearching={Boolean(search.trim()) || hasActiveFilters(filters)}
         onEdit={openPreview}
@@ -858,6 +915,9 @@ function AppShell() {
         language={language}
         calendar={effectiveCalendar}
         refreshKey={entries}
+        entries={entries}
+        dailyMoods={dailyMoods}
+        today={today}
         onOpenEntry={openEntryById}
         onChanged={refresh}
         insets={insets}
@@ -1151,6 +1211,7 @@ function HomeScreen({
   filters,
   setFilters,
   tags,
+  hasCapsules,
   entries,
   isSearching,
   onEdit,
@@ -1403,6 +1464,7 @@ function HomeScreen({
             filters={filters}
             setFilters={setFilters}
             tags={tags}
+            hasCapsules={hasCapsules}
             t={t}
             c={c}
             rtl={rtl}
@@ -1666,15 +1728,26 @@ function EntryList({
             >
               {entry.title || entry.body?.slice(0, 52) || t.noTitle}
             </Text>
-            <Text
-              numberOfLines={1}
-              style={[
-                styles.entryBody,
-                { color: c.muted, textAlign: rtl ? "right" : "left" },
-              ]}
-            >
-              {entry.body}
-            </Text>
+            {entry.locked ? (
+              <View style={[styles.metaItem, rtl && styles.rowReverse, { marginTop: 2 }]}>
+                <Lock size={12} color={c.sageDark} />
+                <Text numberOfLines={1} style={{ color: c.sageDark, fontSize: 11, fontWeight: "600" }}>
+                  {fmt(t.capsuleOpensOn, {
+                    date: formatDateKey(dateKey(new Date(entry.unlock_at)), language, calendar, { dateStyle: "medium" }),
+                  })}
+                </Text>
+              </View>
+            ) : (
+              <Text
+                numberOfLines={1}
+                style={[
+                  styles.entryBody,
+                  { color: c.muted, textAlign: rtl ? "right" : "left" },
+                ]}
+              >
+                {entry.body}
+              </Text>
+            )}
             {entry.tags?.length ? (
               <Text
                 numberOfLines={1}
