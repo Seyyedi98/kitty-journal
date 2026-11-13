@@ -26,6 +26,7 @@ const exact = {
   'expo-secure-store': stub('expo-secure-store.js'),
   'expo-crypto': stub('expo-crypto.js'),
   'expo-local-authentication': stub('expo-local-authentication.js'),
+  'react-native-android-widget': stub('android-widget.js'),
 };
 const virtual = {
   'lucide-react-native': `import { iconProxy } from ${JSON.stringify(stub('misc.jsx'))}; module.exports = iconProxy;`,

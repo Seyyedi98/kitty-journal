@@ -134,6 +134,7 @@ import PremiumPrompt from "./src/components/PremiumPrompt";
 import PremiumLocked from "./src/components/PremiumLocked";
 import MemoriesTeaser from "./src/components/MemoriesTeaser";
 import { PremiumContext, effectiveTheme } from "./src/premium";
+import { refreshWidgets } from "./src/platform/widgets";
 import StoriesRow from "./src/components/StoriesRow";
 import AccountScreen from "./src/screens/AccountScreen";
 import { AccountProvider, useAccount } from "./src/account/AccountContext";
@@ -281,6 +282,18 @@ function AppShell() {
     [theme, premium, dark],
   );
 
+  // Home-screen widgets follow language, calendar and theme.
+  useEffect(() => {
+    if (!ready) return;
+    refreshWidgets({
+      language,
+      calendar: calendarType,
+      theme,
+      appearance,
+      premium,
+      systemDark: systemScheme === "dark",
+    });
+  }, [ready, language, calendarType, theme, appearance, premium, systemScheme]);
   const isTablet = shortestSide >= 600;
   const isLandscapeTablet = isTablet && width > height;
   const contentWidth = Math.min(width - (isTablet ? 88 : 0), 1060);
