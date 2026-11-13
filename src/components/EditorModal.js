@@ -16,6 +16,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Heart,
+  BookOpen,
   Image as ImageIcon,
   Lock,
   MapPin,
@@ -54,6 +55,7 @@ import PhotoStrip from './PhotoStrip';
 import PhotoViewer from './PhotoViewer';
 import EmotionPicker from './EmotionPicker';
 import PlaceField from './PlaceField';
+import NotebookPicker from './NotebookPicker';
 import RichEditor from './RichEditor';
 import RichToolbar from './RichToolbar';
 import CapsuleSection, { atMorning } from './CapsuleSection';
@@ -104,6 +106,8 @@ export default function EditorModal({
   onChanged,
   onDeleted,
   allTags,
+  notebooks = [],
+  defaultNotebookId = 0,
   t,
   c,
   rtl,
@@ -128,6 +132,7 @@ export default function EditorModal({
   const [emotions, setEmotions] = useState([]);
   const [place, setPlace] = useState(null);
   const [date, setDate] = useState(initialDate);
+  const [notebookId, setNotebookId] = useState(0); // 0 = Personal (no notebook)
   const [favorite, setFavoriteState] = useState(false);
   const [pinned, setPinnedState] = useState(false);
   const [tagDraft, setTagDraft] = useState('');
@@ -178,8 +183,8 @@ export default function EditorModal({
   const deletedRef = useRef(false);
 
   const values = useMemo(
-    () => ({ title, bodyHtml, mood, tags, emotions, place, date }),
-    [title, bodyHtml, mood, tags, emotions, place, date],
+    () => ({ title, bodyHtml, mood, tags, emotions, place, date, notebookId }),
+    [title, bodyHtml, mood, tags, emotions, place, date, notebookId],
   );
 
   const persist = useCallback(
@@ -200,6 +205,7 @@ export default function EditorModal({
         tags: v.tags,
         emotions: cleanEmotions(v.emotions),
         location: cleanPlace,
+        notebookId: v.notebookId,
         });
       } catch (error) {
         console.warn('[kitty-journal] save failed:', error);
@@ -235,6 +241,7 @@ export default function EditorModal({
           }
         : null,
       date: entry?.journal_date || initialDate,
+      notebookId: entry ? entry.notebook_id || 0 : defaultNotebookId || 0,
     };
     entryIdRef.current = entry?.id ?? null;
     createdHere.current = false;
@@ -250,6 +257,7 @@ export default function EditorModal({
     setEmotions(start.emotions);
     setPlace(start.place);
     setDate(start.date);
+    setNotebookId(start.notebookId);
     setFavoriteState(Boolean(entry?.favorite));
     setPinnedState(Boolean(entry?.pinned));
     setTagDraft('');
@@ -316,6 +324,7 @@ export default function EditorModal({
         tags,
         emotions: cleanEmotions(emotions),
         location: cleanLocation(place),
+        notebookId,
       });
       entryIdRef.current = id;
       createdHere.current = true;
@@ -770,6 +779,12 @@ export default function EditorModal({
               </View>
             ) : null}
             </Section>
+
+            {notebooks.length ? (
+              <Section icon={BookOpen} title={t.notebookEditorLabel} c={c} rtl={rtl} index={2}>
+                <NotebookPicker notebooks={notebooks} value={notebookId} onChange={setNotebookId} t={t} c={c} rtl={rtl} />
+              </Section>
+            ) : null}
 
             <Section icon={Smile} title={t.entryMoodLabel} c={c} rtl={rtl} index={2}>
             <View style={[s.moodOptions, rtl && s.rowReverse]}>

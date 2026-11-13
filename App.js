@@ -86,6 +86,8 @@ import {
 import Dock from "./src/components/Dock";
 import EditorModal from "./src/components/EditorModal";
 import EntryPreview from "./src/components/EntryPreview";
+import NotebookBar from "./src/components/NotebookBar";
+import NotebooksModal from "./src/components/NotebooksModal";
 import FilterBar, {
   EMPTY_FILTERS,
   applyFilters,
@@ -113,6 +115,7 @@ import {
   listEntries,
   listSealedCapsules,
   listTags,
+  listNotebooks,
   listDailyMoods,
   countDeletedEntries,
   setDailyMood as saveDailyMood,
@@ -138,6 +141,8 @@ import { refreshWidgets } from "./src/platform/widgets";
 import StoriesRow from "./src/components/StoriesRow";
 import AccountScreen from "./src/screens/AccountScreen";
 import { AccountProvider, useAccount } from "./src/account/AccountContext";
+import { useRemoteConfig } from "./src/hooks/useRemoteConfig";
+import AnnouncementCard from "./src/components/AnnouncementCard";
 import StoryViewer from "./src/components/StoryViewer";
 import { buildStories } from "./src/utils/stories";
 import StorageScreen from "./src/screens/StorageScreen";
@@ -234,10 +239,13 @@ function AppShell() {
   const [dailyMoods, setDailyMoods] = useState({});
   const [tab, setTab] = useState("home");
   const [language, setLanguage] = useState("en");
+  const remote = useRemoteConfig(db, language); // announcements (and later flags / minimum version) from the server
   const [calendarType, setCalendarType] = useState("default");
   const [appearance, setAppearance] = useState("system");
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState(EMPTY_FILTERS);
+  const [notebooks, setNotebooks] = useState([]);
+  const [notebooksOpen, setNotebooksOpen] = useState(false);
   const [editorVisible, setEditorVisible] = useState(false);
   const [editing, setEditing] = useState(null);
   const [previewId, setPreviewId] = useState(null);
@@ -299,14 +307,18 @@ function AppShell() {
   const contentWidth = Math.min(width - (isTablet ? 88 : 0), 1060);
 
   const refresh = useCallback(async () => {
-    const [rows, tagRows, moods, trashed] = await Promise.all([
+    const [rows, tagRows, moods, trashed, nbRows] = await Promise.all([
       listEntries(db),
       listTags(db),
       listDailyMoods(db),
       countDeletedEntries(db),
+      listNotebooks(db),
     ]);
     setEntries(maskLockedList(rows)); // sealed time capsules never reach a screen with their content
     setAllTags(tagRows);
+    setNotebooks(nbRows);
+    // A notebook that was deleted can no longer be a filter.
+    setFilters((f) => (f.notebookId > 0 && !nbRows.some((n) => n.id === f.notebookId) ? { ...f, notebookId: null } : f));
     setDailyMoods(moods);
     setTrashCount(trashed);
     setReady(true);
@@ -873,6 +885,10 @@ function AppShell() {
         setFilters={setFilters}
         tags={allTags}
         hasCapsules={hasCapsules}
+        notebooks={notebooks}
+        onManageNotebooks={() => setNotebooksOpen(true)}
+        announcement={remote.announcement}
+        onCloseAnnouncement={remote.closeAnnouncement}
         entries={visibleEntries}
         isSearching={Boolean(search.trim()) || hasActiveFilters(filters)}
         onEdit={openPreview}
@@ -951,6 +967,7 @@ function AppShell() {
   const openPremium = () => {
     setPremiumAsk(null);
     setEditorVisible(false);
+    setNotebooksOpen(false); // a full-screen modal would otherwise stay on top of the Plus page
     setPreviewId(null);
     setTab("home");
     setSubScreen("premium");
@@ -1181,6 +1198,8 @@ function AppShell() {
           onChanged={refresh}
           onDeleted={onEntryDeleted}
           allTags={allTags}
+          notebooks={notebooks}
+          defaultNotebookId={filters.notebookId > 0 ? filters.notebookId : 0}
           t={t}
           c={c}
           rtl={rtl}
@@ -1188,6 +1207,17 @@ function AppShell() {
           calendar={effectiveCalendar}
           dark={dark}
           insets={insets}
+        />
+        <NotebooksModal
+          visible={notebooksOpen}
+          onClose={() => setNotebooksOpen(false)}
+          db={db}
+          notebooks={notebooks}
+          defaultCount={entries.filter((e) => !e.notebook_id).length}
+          onChanged={refresh}
+          t={t}
+          c={c}
+          rtl={rtl}
         />
         <DialogHost t={t} c={c} rtl={rtl} />
         {promptNode}
@@ -1212,6 +1242,10 @@ function HomeScreen({
   setFilters,
   tags,
   hasCapsules,
+  notebooks,
+  onManageNotebooks,
+  announcement,
+  onCloseAnnouncement,
   entries,
   isSearching,
   onEdit,
@@ -1281,6 +1315,7 @@ function HomeScreen({
         ]}
       >
         <View style={styles.homeColumn}>
+          {announcement ? <AnnouncementCard text={announcement.text} onClose={onCloseAnnouncement} t={t} c={c} rtl={rtl} /> : null}
           {!isSearching && (
             <StoriesRow
               groups={stories}
@@ -1460,6 +1495,15 @@ function HomeScreen({
               blurOnSubmit={false}
             />
           </View>
+          <NotebookBar
+            notebooks={notebooks}
+            value={filters.notebookId}
+            onChange={(id) => setFilters({ ...filters, notebookId: id })}
+            onManage={onManageNotebooks}
+            t={t}
+            c={c}
+            rtl={rtl}
+          />
           <FilterBar
             filters={filters}
             setFilters={setFilters}

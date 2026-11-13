@@ -82,6 +82,8 @@ export function createApi({ baseUrl = API_BASE_URL, appId = APP_ID, fetchImpl, t
     updateProfile: (token, profile) => call('PATCH', '/me', { token, body: { name: profile.name, gender: profile.gender, birth_year: new Date().getFullYear() - profile.age } }),
     /** → { plan, premium, source, expires_at } */
     entitlement: (token) => call('GET', `${appPath}/entitlement`, { token }),
+    /** No sign-in. → { app_id, min_version, flags, announcement: null | { id, text: { en, tr?, fa? } }, plans, backup }. The server caches it for 5 minutes. */
+    config: () => call('GET', `${appPath}/config`),
     /** No sign-in. → { currency: 'toman', plans: [{ id, plan, title: { en, tr, fa }, price, currency, duration_days }] } */
     plans: () => call('GET', `${appPath}/plans`),
     /** Price with a discount code. → { price, discount, amount, currency }. A bad code is 400 `invalid_code` with a readable message. */
@@ -118,6 +120,7 @@ export function createMockApi() {
     logout: async () => wait(null),
     me: async () => wait({ user_id: 'u', plan: 'free', premium: false }),
     updateProfile: async () => wait(null),
+    config: async () => wait({ app_id: appId, min_version: '0.0.0', flags: {}, announcement: null, plans: { free: { backups: 3 }, premium: { backups: 20 } }, backup: { max_bytes: 2097152 } }),
     entitlement: async () => wait(paid ? { plan: 'premium', premium: true, source: 'mock', expires_at: new Date(Date.now() + 30 * 86400000).toISOString() } : { plan: 'free', premium: false, source: 'mock', expires_at: null }),
     plans: async () => wait({
       currency: 'toman',
