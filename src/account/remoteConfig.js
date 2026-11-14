@@ -40,6 +40,11 @@ export function pendingAnnouncement(config, dismissedId, language) {
   return text ? { id: a.id, text } : null;
 }
 
+/** Is the named server flag ON? A flag the server does not list (or no config yet) counts as OFF. */
+export function flagOn(config, name) {
+  return Boolean(config && config.flags && config.flags[name] === true);
+}
+
 export async function loadSaved(db) {
   const s = await loadSettings(db);
   return { config: cleanConfig(s[CONFIG_KEY]), dismissed: typeof s[DISMISSED_KEY] === 'string' ? s[DISMISSED_KEY] : null };

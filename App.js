@@ -142,6 +142,7 @@ import StoriesRow from "./src/components/StoriesRow";
 import AccountScreen from "./src/screens/AccountScreen";
 import { AccountProvider, useAccount } from "./src/account/AccountContext";
 import { useRemoteConfig } from "./src/hooks/useRemoteConfig";
+import { flagOn } from "./src/account/remoteConfig";
 import AnnouncementCard from "./src/components/AnnouncementCard";
 import StoryViewer from "./src/components/StoryViewer";
 import { buildStories } from "./src/utils/stories";
@@ -797,6 +798,7 @@ function AppShell() {
         rtl={rtl}
         language={language}
         premium={premium}
+        paymentEnabled={flagOn(remote.config, "journal_payment")}
         num={numberFormatter(language)}
         onBack={() => setSubScreen(null)}
         onOpenAccount={() => setSubScreen("account")}

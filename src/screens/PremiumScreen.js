@@ -18,7 +18,7 @@ const GREEN = '#2F6B3A';
 const RED = '#B64E45';
 
 /** What Free and Plus include, and the plans to buy. Plans, prices and discount codes always come from the server. */
-export default function PremiumScreen({ t, c, rtl, language = 'en', premium, num = String, onBack, onOpenAccount }) {
+export default function PremiumScreen({ t, c, rtl, language = 'en', premium, paymentEnabled = true, num = String, onBack, onOpenAccount }) {
   const account = useAccount();
   const align = rtl ? 'right' : 'left';
   const row = rtl ? 'row-reverse' : 'row';
@@ -93,7 +93,7 @@ export default function PremiumScreen({ t, c, rtl, language = 'en', premium, num
   const removeCode = () => { setApplied(''); setQuotes({}); setCodeText(''); setCodeMsg(''); };
 
   const pay = async () => {
-    if (!plan || busy) return;
+    if (!plan || busy || !paymentEnabled) return;
     setBusy('pay'); setMsg('');
     try {
       await account.startCheckout(plan.id, quoteOk ? applied : undefined);
@@ -183,7 +183,17 @@ export default function PremiumScreen({ t, c, rtl, language = 'en', premium, num
                 );
               })}
 
-              {!account.user ? (
+              {!paymentEnabled ? (
+                <>
+                  <Note c={c} rtl={rtl}>{t.paymentOff}</Note>
+                  {account.user && account.pendingOrder ? (
+                    <>
+                      <Note c={c} rtl={rtl}>{account.polling ? t.planChecking : t.planWaiting}</Note>
+                      <Button label={busy === 'check' || account.polling ? t.planChecking : t.planCheckNow} onPress={checkAgain} c={c} rtl={rtl} variant="secondary" icon={RefreshCw} busy={busy === 'check' || account.polling} disabled={Boolean(busy) || account.polling} />
+                    </>
+                  ) : null}
+                </>
+              ) : !account.user ? (
                 <>
                   <Text style={{ color: c.muted, fontSize: 13, lineHeight: 20, textAlign: align }}>{t.planNeedLogin}</Text>
                   <Button label={t.planLogin} onPress={() => onOpenAccount && onOpenAccount()} c={c} rtl={rtl} variant="primary" />
