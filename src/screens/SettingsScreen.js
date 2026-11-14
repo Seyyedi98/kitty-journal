@@ -6,8 +6,10 @@ import { Card, LinkRow, Segmented } from '../components/common';
 import { fmt } from '../i18n';
 import { usePremium } from '../premium';
 import { useAccount } from '../account/AccountContext';
+import CatImage from '../components/CatImage';
 
 const PLUS_IMAGE = require('../../assets/images/plus-cat.png');
+const SETTINGS_CAT = require('../../assets/images/settings-cat.png');
 
 const themeLabelKey = (key) => `theme${String(key).charAt(0).toUpperCase()}${String(key).slice(1)}`;
 
@@ -41,7 +43,10 @@ export default function SettingsScreen({
   const align = rtl ? 'right' : 'left';
   return (
     <ScrollView contentContainerStyle={s.page}>
-      <Text style={[s.title, { color: c.ink }]}>{t.settings}</Text>
+      <View style={[s.titleRow, rtl && s.rowReverse]}>
+        <Text style={[s.title, { color: c.ink, flex: 1, textAlign: align }]}>{t.settings}</Text>
+        <CatImage source={SETTINGS_CAT} width={104} rounded />
+      </View>
 
       {!premium ? (
         <Pressable
@@ -141,6 +146,7 @@ const s = StyleSheet.create({
   bannerCta: { marginTop: 6, paddingHorizontal: 12, paddingVertical: 5, borderRadius: 999 },
   label: { fontSize: 12, fontWeight: '700' },
   eyebrow: { fontSize: 10, letterSpacing: 1.6, fontWeight: '700', marginBottom: 9 },
-  title: { fontSize: 29, fontWeight: '500', marginTop: -4, marginBottom: 6 },
+  title: { fontSize: 29, fontWeight: '500' },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: -4, marginBottom: 8 },
   privacy: { borderWidth: 1, borderRadius: 15, padding: 16, flexDirection: 'row', alignItems: 'flex-start', gap: 12, marginTop: 14 },
 });

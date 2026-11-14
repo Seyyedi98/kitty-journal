@@ -12,6 +12,9 @@ import { RANGE_PRESETS, computeInsights, rangeFor } from '../utils/insights';
 import { calendarDateKey, formatDateKey, weekStartFor } from '../calendar';
 import { fmt } from '../i18n';
 import { mergeDayMoods } from '../utils/wrapped';
+import CatImage from '../components/CatImage';
+
+const INSIGHTS_CAT = require('../../assets/images/analytics-cat.png');
 
 const CHART_H = 84;
 
@@ -110,7 +113,10 @@ export default function InsightsScreen({ t, c, rtl, language, calendar, today, e
 
   return (
     <ScrollView contentContainerStyle={s.page}>
-      <Text style={[s.title, { color: c.ink, textAlign: align }]}>{t.insights}</Text>
+      <View style={[s.titleRow, rtl && s.rowReverse]}>
+        <Text style={[s.title, { color: c.ink, textAlign: align, flex: 1 }]}>{t.insights}</Text>
+        <CatImage source={INSIGHTS_CAT} width={130} />
+      </View>
 
       {premium ? <Segmented
         c={c}
@@ -230,6 +236,7 @@ const s = StyleSheet.create({
   page: { paddingTop: 25, paddingBottom: 22, gap: 14 },
   eyebrow: { fontSize: 11, fontWeight: '700', letterSpacing: 1.4, textTransform: 'uppercase' },
   title: { fontSize: 28, fontWeight: '600' },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   grid: { flexDirection: 'row', gap: 10 },
   rowReverse: { flexDirection: 'row-reverse' },
   stat: { flex: 1, minHeight: 74, borderWidth: 1, borderRadius: 18, paddingVertical: 12, paddingHorizontal: 8, alignItems: 'center', justifyContent: 'center', gap: 4 },

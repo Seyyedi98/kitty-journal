@@ -7,10 +7,12 @@ import { Button, Card, Note, SubHeader } from '../components/common';
 import { checkAttachments, cleanOrphanFiles, fileOpsActive, OWN_FILE_RE, removeBrokenReferences } from '../services/photos';
 import { deps } from '../platform/deps';
 import PhotoReduceCard from '../components/PhotoReduceCard';
+import CatImage from '../components/CatImage';
 import { formatBytes, numberFormatter } from '../utils/format';
 import { fmt } from '../i18n';
 
 const fs = deps.fs;
+const STORAGE_CAT = require('../../assets/images/storage-cat.png');
 
 async function folderStats(dir, filter) {
   let count = 0;
@@ -128,6 +130,7 @@ export default function StorageScreen({ db, t, c, rtl, language, onBack, onChang
   return (
     <ScrollView contentContainerStyle={s.page}>
       <SubHeader title={t.storage} onBack={onBack} c={c} rtl={rtl} t={t} />
+      <CatImage source={STORAGE_CAT} width={170} />
 
       <Card title={t.storage} c={c} rtl={rtl}>
         {stats ? (

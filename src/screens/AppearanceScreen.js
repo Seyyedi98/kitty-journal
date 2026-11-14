@@ -5,6 +5,9 @@ import { Card, Note, Segmented, SubHeader } from '../components/common';
 import ThemePicker from '../components/ThemePicker';
 import { LATIN_FONTS, PERSIAN_FONTS, loadAllFonts } from '../fonts';
 import { LATIN_FONT_FAMILIES, PERSIAN_FONT_FAMILIES } from '../ui';
+import CatImage from '../components/CatImage';
+
+const APPEARANCE_CAT = require('../../assets/images/appearance-cat.png');
 
 const SAMPLE_FA = 'این یک نمونهٔ نوشتهٔ فارسی است ۱۲۳۴۵۶۷۸۹۰';
 const SAMPLE_EN = 'The quick brown fox · Günaydın 0123456789';
@@ -28,6 +31,7 @@ export default function AppearanceScreen({ t, c, rtl, appearance, setAppearance,
   return (
     <ScrollView contentContainerStyle={s.page}>
       <SubHeader title={t.appearance} onBack={onBack} c={c} rtl={rtl} t={t} />
+      <CatImage source={APPEARANCE_CAT} width={170} rounded />
 
       <Card title={t.appearanceMode} c={c} rtl={rtl}>
         <Segmented

@@ -4,6 +4,9 @@ import { ScrollView, Text } from '../ui';
 import { Button, Card, Note, SubHeader, Segmented, ToggleRow } from '../components/common';
 import PinPad from '../components/PinPad';
 import { fmt } from '../i18n';
+import CatImage from '../components/CatImage';
+
+const LOCK_CAT = require('../../assets/images/lock-cat.png');
 
 /**
  * App lock settings. A small state machine drives the PIN prompts:
@@ -100,6 +103,7 @@ export default function AppLockScreen({ lock, t, c, rtl, onBack }) {
     return (
       <ScrollView contentContainerStyle={s.page}>
         <SubHeader title={t.appLock} onBack={() => reset()} c={c} rtl={rtl} t={t} />
+        <CatImage source={LOCK_CAT} width={120} rounded />
         <Card title={title} c={c} rtl={rtl}>
           {hint ? <Text style={{ color: c.muted, fontSize: 11, textAlign: align }}>{hint}</Text> : null}
           {message ? <Note c={c} rtl={rtl} tone={problem ? 'danger' : 'ok'}>{message}</Note> : null}
@@ -114,6 +118,7 @@ export default function AppLockScreen({ lock, t, c, rtl, onBack }) {
   return (
     <ScrollView contentContainerStyle={s.page}>
       <SubHeader title={t.appLock} onBack={onBack} c={c} rtl={rtl} t={t} />
+      <CatImage source={LOCK_CAT} width={170} rounded />
       <Note c={c} rtl={rtl}>{t.appLockHint}</Note>
       <Note c={c} rtl={rtl}>{t.lockNote}</Note>
 

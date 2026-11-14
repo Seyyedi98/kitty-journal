@@ -9,6 +9,9 @@ import { deleteTag, listTags, renameTag } from '../db/repository';
 import { cleanTagName } from '../utils/text';
 import { numberFormatter } from '../utils/format';
 import { fmt } from '../i18n';
+import CatImage from '../components/CatImage';
+
+const TAGS_CAT = require('../../assets/images/tags-cat.png');
 
 export default function TagsScreen({ db, t, c, rtl, language, onBack, onChanged }) {
   const [tags, setTags] = useState(null);
@@ -70,6 +73,7 @@ export default function TagsScreen({ db, t, c, rtl, language, onBack, onChanged 
   return (
     <ScrollView contentContainerStyle={s.page} keyboardShouldPersistTaps="handled">
       <SubHeader title={t.manageTags} onBack={onBack} c={c} rtl={rtl} t={t} />
+      <CatImage source={TAGS_CAT} width={170} rounded />
       {message ? <Note c={c} rtl={rtl} tone="ok">{message}</Note> : null}
       {tags === null ? (
         <Text style={{ color: c.muted, fontSize: 12 }}>{t.loading}</Text>

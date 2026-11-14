@@ -14,6 +14,9 @@ import AccountScreen from './AccountScreen';
 import { useAccount } from '../account/AccountContext';
 import { serverReady } from '../account/config';
 import { usePremium } from '../premium';
+import CatImage from '../components/CatImage';
+
+const LOCK_CAT = require('../../assets/images/lock-cat.png');
 
 const PAGES = 6;
 
@@ -93,9 +96,13 @@ export default function OnboardingScreen({
   return (
     <View style={[s.root, { backgroundColor: c.bg, paddingTop: insets.top + 16, paddingBottom: insets.bottom + 16 }]}>
       <ScrollView contentContainerStyle={s.body}>
-        <View style={[s.icon, { backgroundColor: c.sage }]}>
-          <Icon size={30} color={c.sageDark} />
-        </View>
+        {page === 2 ? (
+          <CatImage source={LOCK_CAT} width={190} rounded style={{ marginBottom: 6 }} />
+        ) : (
+          <View style={[s.icon, { backgroundColor: c.sage }]}>
+            <Icon size={30} color={c.sageDark} />
+          </View>
+        )}
         <Text style={{ color: c.ink, fontSize: 24, fontWeight: '700', textAlign: 'center' }}>{titles[page]}</Text>
         <Text style={{ color: c.muted, fontSize: 15, lineHeight: 23, textAlign: 'center' }}>{bodies[page]}</Text>
 

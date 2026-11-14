@@ -10,6 +10,9 @@ import { normalizeCode, normalizePhone, validateProfile } from '../account/valid
 import { Dialog } from '../platform/dialog';
 import { daysLeft } from '../account/plan';
 import { errText } from '../account/errors';
+import CatImage from '../components/CatImage';
+
+const PREMIUM_CAT = require('../../assets/images/premium-cat.png');
 
 function Field({ label, error, c, rtl, children }) {
   return (
@@ -196,6 +199,7 @@ export default function AccountScreen({ db, t, c, rtl, language, onBack, onOpenB
       <ScrollView contentContainerStyle={s.page} keyboardShouldPersistTaps="handled">
         {header}
         <Text style={[s.title, { color: c.ink, textAlign: align }]}>{t.account}</Text>
+        {account.premium ? <CatImage source={PREMIUM_CAT} width={200} /> : null}
         <Card c={c} rtl={rtl}>
           <View style={[s.profileRow, rtl && s.rowReverse]}>
             <View style={[s.avatar, { backgroundColor: c.sage }]}><UserRound size={24} color={c.sageDark} /></View>

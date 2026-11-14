@@ -145,6 +145,9 @@ import { useRemoteConfig } from "./src/hooks/useRemoteConfig";
 import { flagOn } from "./src/account/remoteConfig";
 import AnnouncementCard from "./src/components/AnnouncementCard";
 import StoryViewer from "./src/components/StoryViewer";
+import PremiumCongrats from "./src/components/PremiumCongrats";
+import CapsuleArrived from "./src/components/CapsuleArrived";
+import CatImage from "./src/components/CatImage";
 import { buildStories } from "./src/utils/stories";
 import StorageScreen from "./src/screens/StorageScreen";
 import ReminderScreen from "./src/screens/ReminderScreen";
@@ -164,7 +167,7 @@ import { numberFormatter } from "./src/utils/format";
 import { EMOTIONS } from "./src/utils/emotions";
 import { TurboModuleRegistry } from "react-native";
 
-const HOME_CAT = require("./assets/images/home-cat.png"); // 560 x 337
+const HOME_CAT = require("./assets/images/home-cat.png"); // 900 x 594 (transparent)
 const APP_LOGO = require("./assets/images/logo.png"); // the app icon, shown in the top bar
 
 // Lock screen rotate
@@ -266,6 +269,10 @@ function AppShell() {
   // Premium comes only from the server (entitlement), and only for a signed-in user. The last known answer is kept for offline use.
   const premium = Boolean(account.user) && account.premium === true;
   const [premiumAsk, setPremiumAsk] = useState(null); // feature key of the open "needs Premium" popup
+  // Only capsules that open AFTER this moment (the first run of the feature on this phone) can raise the popup,
+  // so a restored backup full of old, already-open capsules never shows a pile of "new letters".
+  const [capsuleBaseline, setCapsuleBaseline] = useState(null);
+  const [capsuleSeen, setCapsuleSeen] = useState(null); // ids of opened time capsules the user was already told about (null = not loaded yet)
   const [loadError, setLoadError] = useState(false);
   const [undo, setUndo] = useState(null);
   const undoTimer = useRef(null);
@@ -355,6 +362,13 @@ function AppShell() {
         setAppearance(look);
         if (THEME_KEYS.includes(saved.theme)) setTheme(saved.theme);
         if (PERSIAN_FONT_KEYS.includes(saved.faFont)) setFaFont(saved.faFont);
+        setCapsuleSeen(Array.isArray(saved.capsuleSeen) ? saved.capsuleSeen : []);
+        let base = typeof saved.capsuleBaseline === "string" && Number.isFinite(Date.parse(saved.capsuleBaseline)) ? saved.capsuleBaseline : null;
+        if (!base) {
+          base = new Date().toISOString();
+          saveSetting(db, "capsuleBaseline", base).catch(() => {});
+        }
+        setCapsuleBaseline(base);
         if (LATIN_FONT_KEYS.includes(saved.latinFont))
           setLatinFont(saved.latinFont);
         const effective =
@@ -446,6 +460,41 @@ function AppShell() {
   }, []);
   // Time capsules: open them on time (re-read when the next one is due and whenever the app comes to the front),
   // schedule one notification per sealed capsule, and open the capsule when its notification is tapped.
+  // "A letter from your past self": a popup when a time capsule has opened and the user was not told yet.
+  const openedCapsules = useMemo(() => entries.filter((e) => e.unlock_at && !e.locked), [entries]);
+  const markCapsulesSeen = (ids) => {
+    const next = Array.from(new Set([...(capsuleSeen || []), ...ids]));
+    setCapsuleSeen(next);
+    persistSetting("capsuleSeen", next);
+  };
+  const pendingCapsules = useMemo(() => {
+    if (capsuleSeen == null || capsuleBaseline == null) return [];
+    const since = Date.parse(capsuleBaseline);
+    return openedCapsules.filter((e) => !capsuleSeen.includes(e.id) && Date.parse(e.unlock_at) > since);
+  }, [capsuleSeen, capsuleBaseline, openedCapsules]);
+  // An opened capsule that is opened some other way (its notification, the list) needs no popup afterwards.
+  useEffect(() => {
+    if (previewId != null && pendingCapsules.some((e) => e.id === previewId)) markCapsulesSeen([previewId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previewId, pendingCapsules]);
+  const congratsOpen = Boolean(account.payment && account.payment.status === "paid");
+  const capsulePopupItems =
+    ready && !loadError && !showOnboarding && !congratsOpen && !editorVisible && previewId == null && !notebooksOpen && !premiumAsk
+      ? pendingCapsules
+      : [];
+  const viewArrived = () => {
+    const list = capsulePopupItems;
+    markCapsulesSeen(list.map((e) => e.id));
+    if (list.length === 1) {
+      const id = list[0].id;
+      setTimeout(() => setPreviewId(id), 250); // let the popup close first
+    } else {
+      setSubScreen(null);
+      setSettingsOpen(false);
+      setTab("home");
+      setFilters((f) => ({ ...f, capsule: true }));
+    }
+  };
   const entriesRef = useRef(entries);
   entriesRef.current = entries;
   useEffect(() => {
@@ -1221,6 +1270,16 @@ function AppShell() {
           c={c}
           rtl={rtl}
         />
+        <CapsuleArrived
+          items={capsulePopupItems}
+          onView={viewArrived}
+          onLater={() => markCapsulesSeen(capsulePopupItems.map((e) => e.id))}
+          t={t}
+          c={c}
+          rtl={rtl}
+          num={numberFormatter(language)}
+        />
+        <PremiumCongrats visible={congratsOpen} onClose={account.dismissPayment} t={t} c={c} rtl={rtl} />
         <DialogHost t={t} c={c} rtl={rtl} />
         {promptNode}
       </View>
@@ -1372,15 +1431,7 @@ function HomeScreen({
                 {t.subtitle}
               </Text>
             </View>
-            <Image
-              source={HOME_CAT}
-              style={{
-                width: isTablet ? 190 : 128,
-                height: Math.round(((isTablet ? 190 : 128) * 337) / 560),
-              }}
-              resizeMode="contain"
-              accessibilityIgnoresInvertColors
-            />
+            <CatImage source={HOME_CAT} width={isTablet ? 230 : 150} />
           </Animated.View>
           <Animated.View
             entering={fadeInDown(70)}

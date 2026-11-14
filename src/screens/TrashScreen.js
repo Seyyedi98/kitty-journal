@@ -1,6 +1,6 @@
 import { Dialog } from '../platform/dialog';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Image, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { RotateCcw, Trash2 } from 'lucide-react-native';
 import { ScrollView, Text } from '../ui';
 import EmptyState from '../components/EmptyState';
@@ -11,9 +11,9 @@ import { deps } from '../platform/deps';
 import { formatDateKey } from '../calendar';
 import { isoToDateKey, numberFormatter } from '../utils/format';
 import { fmt } from '../i18n';
+import CatImage from '../components/CatImage';
 const TRASH_CAT = require('../../assets/images/trash-cat.png');
-const TRASH_CAT_WIDTH = 120; // size of the picture on screen (dp); change it here
-const TRASH_CAT_HEIGHT = Math.round((TRASH_CAT_WIDTH * 616) / 600);
+const TRASH_CAT_WIDTH = 130; // size of the picture on screen (dp); change it here
 
 const fs = deps.fs;
 
@@ -62,7 +62,7 @@ export default function TrashScreen({ db, t, c, rtl, language, calendar, onBack,
   return (
     <ScrollView contentContainerStyle={s.page}>
       <SubHeader title={t.trash} onBack={onBack} c={c} rtl={rtl} t={t} />
-      <Image source={TRASH_CAT} style={{ width: TRASH_CAT_WIDTH, height: TRASH_CAT_HEIGHT, alignSelf: 'center' }} resizeMode="contain" accessibilityIgnoresInvertColors />
+      <CatImage source={TRASH_CAT} width={TRASH_CAT_WIDTH} />
       <Note c={c} rtl={rtl}>{t.trashNote}</Note>
 
       {items === null ? (
