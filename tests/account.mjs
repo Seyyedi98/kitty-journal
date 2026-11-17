@@ -338,4 +338,25 @@ await test('purchase: routes match the server manual, errors read well, mock flo
   assert.equal(free.status, 'paid'); assert.equal(free.amount, 0);
 });
 
+await test('support: real API paths and bodies; the mock keeps a conversation', async () => {
+  const calls = [];
+  const api = createApi({ baseUrl: 'https://x.test/api/v1', appId: 'kitty-journal', fetchImpl: async (url, init) => { calls.push([init.method, url.replace('https://x.test/api/v1', ''), init.body ? JSON.parse(init.body) : null]); return { ok: true, status: 200, headers: { get: () => null }, text: async () => '{"tickets":[],"unread":0}' }; } });
+  await api.supportList('tok'); await api.supportCreate('tok', 'Hi there', 'Message text'); await api.supportGet('tok', 'a1'); await api.supportReply('tok', 'a1', 'again'); await api.supportClose('tok', 'a1'); await api.supportUnread('tok');
+  assert.deepEqual(calls.map((c) => c.slice(0, 2).join(' ')), [
+    'GET /apps/kitty-journal/support/tickets', 'POST /apps/kitty-journal/support/tickets', 'GET /apps/kitty-journal/support/tickets/a1',
+    'POST /apps/kitty-journal/support/tickets/a1/messages', 'POST /apps/kitty-journal/support/tickets/a1/close', 'GET /apps/kitty-journal/support/unread']);
+  assert.deepEqual(calls[1][2], { subject: 'Hi there', message: 'Message text' });
+  assert.deepEqual(calls[3][2], { message: 'again' });
+
+  const mock = createMockApi();
+  assert.equal((await mock.supportList('t')).tickets.length, 0);
+  const { ticket } = await mock.supportCreate('t', 'Payment problem', 'I paid but nothing happened');
+  assert.equal((await mock.supportList('t')).tickets[0].subject, 'Payment problem');
+  await mock.supportReply('t', ticket.id, 'one more thing');
+  assert.deepEqual((await mock.supportGet('t', ticket.id)).messages.map((m) => m.from), ['user', 'user']);
+  await mock.supportClose('t', ticket.id);
+  assert.equal((await mock.supportList('t')).tickets[0].status, 'closed');
+  assert.equal((await mock.supportUnread('t')).unread, 0);
+});
+
 console.log(`\n${passed} passed`);

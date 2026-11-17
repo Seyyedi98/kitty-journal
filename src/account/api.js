@@ -98,6 +98,16 @@ export function createApi({ baseUrl = API_BASE_URL, appId = APP_ID, fetchImpl, t
     createBackup: (token, body) => call('POST', `${appPath}/backups`, { token, body }),
     downloadBackup: (token, id) => call('GET', `${appPath}/backups/${encodeURIComponent(id)}`, { token }),
     deleteBackup: (token, id) => call('DELETE', `${appPath}/backups/${encodeURIComponent(id)}`, { token }),
+    /** Support. → { tickets: [{ id, subject, status: open|answered|closed, created_at, last_message_at, unread }] } */
+    supportList: (token) => call('GET', `${appPath}/support/tickets`, { token }),
+    /** → 201 { ticket }. subject 3-100, message 3-2000 characters. */
+    supportCreate: (token, subject, message) => call('POST', `${appPath}/support/tickets`, { token, body: { subject, message } }),
+    /** → { ticket, messages: [{ id, from: 'user'|'admin', body, created_at }] }. Opening marks the answers as read. */
+    supportGet: (token, id) => call('GET', `${appPath}/support/tickets/${encodeURIComponent(id)}`, { token }),
+    supportReply: (token, id, message) => call('POST', `${appPath}/support/tickets/${encodeURIComponent(id)}/messages`, { token, body: { message } }),
+    supportClose: (token, id) => call('POST', `${appPath}/support/tickets/${encodeURIComponent(id)}/close`, { token }),
+    /** → { unread: number } answers not opened yet (for the dot on the Support row). */
+    supportUnread: (token) => call('GET', `${appPath}/support/unread`, { token }),
   };
 }
 
@@ -106,6 +116,7 @@ export function createMockApi() {
   const wait = (v) => new Promise((r) => setTimeout(() => r(v), 300));
   const challenges = new Map();
   const backups = [];
+  const tickets = [];
   const orders = new Map();
   let paid = false;
   let n = 0;
@@ -150,6 +161,30 @@ export function createMockApi() {
     listBackups: async () => wait({ backups: backups.map(({ payload, ...m }) => m).reverse(), plan: 'free', limit: 3 }),
     createBackup: async (t, body) => { const m = { id: 'b' + ++n, label: body.label || null, created_at: new Date().toISOString(), payload: body.backup }; backups.push(m); return wait({ id: m.id, created_at: m.created_at }); },
     downloadBackup: async (t, id) => { const b = backups.find((x) => x.id === id); if (!b) throw new ApiError('not_found'); return wait(b.payload); },
+    supportList: async () => wait({ tickets: tickets.map((t) => ({ id: t.id, subject: t.subject, status: t.status, created_at: t.created_at, last_message_at: t.last_message_at, unread: t.unread })) }),
+    supportCreate: async (_t, subject, message) => {
+      const now = new Date().toISOString();
+      const t = { id: 'tk' + ++n, subject, status: 'open', created_at: now, last_message_at: now, unread: 0, messages: [{ id: 'm' + ++n, from: 'user', body: message, created_at: now }] };
+      tickets.unshift(t);
+      return wait({ ticket: { id: t.id, subject, status: 'open', created_at: now, last_message_at: now, unread: 0 } });
+    },
+    supportGet: async (_t, id) => {
+      const t = tickets.find((x) => x.id === id);
+      if (!t) throw new ApiError('not_found', 'unknown conversation', { status: 404 });
+      t.unread = 0;
+      return wait({ ticket: { id: t.id, subject: t.subject, status: t.status, created_at: t.created_at, last_message_at: t.last_message_at, unread: 0 }, messages: t.messages });
+    },
+    supportReply: async (_t, id, message) => {
+      const t = tickets.find((x) => x.id === id);
+      if (!t) throw new ApiError('not_found', 'unknown conversation', { status: 404 });
+      const now = new Date().toISOString();
+      t.messages.push({ id: 'm' + ++n, from: 'user', body: message, created_at: now });
+      t.status = 'open';
+      t.last_message_at = now;
+      return wait({ ok: true });
+    },
+    supportClose: async (_t, id) => { const t = tickets.find((x) => x.id === id); if (t) t.status = 'closed'; return wait({ ok: true }); },
+    supportUnread: async () => wait({ unread: tickets.reduce((a, t) => a + t.unread, 0) }),
     deleteBackup: async (t, id) => { const i = backups.findIndex((x) => x.id === id); if (i < 0) throw new ApiError('not_found'); backups.splice(i, 1); return wait(null); },
   };
 }

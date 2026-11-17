@@ -148,7 +148,7 @@ export default function OnboardingScreen({
         ) : null}
       </ScrollView>
 
-      <View style={s.dots}>
+      <View style={[s.dots, rtl && s.rowReverse]}>
         {Array.from({ length: PAGES }, (_, i) => (
           <View key={i} style={[s.dot, { backgroundColor: i === page ? c.sageDark : c.line, width: i === page ? 22 : 8 }]} />
         ))}

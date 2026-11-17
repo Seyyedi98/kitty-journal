@@ -131,6 +131,7 @@ import TrashScreen from "./src/screens/TrashScreen";
 import TagsScreen from "./src/screens/TagsScreen";
 import SettingsScreen from "./src/screens/SettingsScreen";
 import BackupScreen from "./src/screens/BackupScreen";
+import SupportScreen from "./src/screens/SupportScreen";
 import AppearanceScreen from "./src/screens/AppearanceScreen";
 import PremiumScreen from "./src/screens/PremiumScreen";
 import PremiumPrompt from "./src/components/PremiumPrompt";
@@ -259,7 +260,7 @@ function AppShell() {
     getCalendarParts(dateKey(), "gregorian"),
   );
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [subScreen, setSubScreen] = useState(null); // null | "premium" | "appearance" | "trash" | "tags" | "backup" | "storage" | "reminders" | "lock" | "account"
+  const [subScreen, setSubScreen] = useState(null); // null | "premium" | "appearance" | "trash" | "tags" | "backup" | "storage" | "reminders" | "lock" | "account" | "support"
   const [trashCount, setTrashCount] = useState(0);
   const [ready, setReady] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
@@ -301,6 +302,7 @@ function AppShell() {
   // Home-screen widgets follow language, calendar and theme.
   useEffect(() => {
     if (!ready) return;
+    persistSetting("widgetPremium", premium); // the widgets draw themselves without the app, so they read this
     refreshWidgets({
       language,
       calendar: calendarType,
@@ -837,6 +839,18 @@ function AppShell() {
         num={numberFormatter(language)}
         onBack={() => setSubScreen(null)}
         onOpenBackup={() => setSubScreen("backup")}
+      />
+    );
+  else if (settingsOpen && subScreen === "support")
+    content = (
+      <SupportScreen
+        t={t}
+        c={c}
+        rtl={rtl}
+        language={language}
+        num={numberFormatter(language)}
+        onBack={() => setSubScreen(null)}
+        onOpenAccount={() => setSubScreen("account")}
       />
     );
   else if (settingsOpen && subScreen === "premium")

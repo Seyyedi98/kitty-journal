@@ -1,5 +1,6 @@
 import { translations as base } from './base';
 import { phase2 } from './phase2';
+import { supportText } from './support';
 
 // Keys added after the first version. Every key must exist in en, fa and tr
 // (checked by tests/run.mjs).
@@ -133,7 +134,7 @@ const extra = {
 };
 
 export const translations = Object.fromEntries(
-  Object.keys(base).map((lang) => [lang, { ...base[lang], ...extra[lang], ...phase2[lang] }]),
+  Object.keys(base).map((lang) => [lang, { ...base[lang], ...extra[lang], ...phase2[lang], ...supportText[lang] }]),
 );
 
 /** Fill {name} placeholders: fmt(t.photoCount, { n: '3' }). Unknown names stay visible. */

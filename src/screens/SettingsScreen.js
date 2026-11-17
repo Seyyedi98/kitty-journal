@@ -1,11 +1,13 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Image, Pressable, StyleSheet, View } from 'react-native';
-import { Archive, Bell, Crown, UserRound, Palette, ChevronLeft, ChevronRight, Heart, HardDrive, Lock, Tag, Trash2 } from 'lucide-react-native';
+import { Archive, Bell, Crown, UserRound, Palette, ChevronLeft, ChevronRight, Heart, HardDrive, LifeBuoy, Lock, Tag, Trash2 } from 'lucide-react-native';
 import { ScrollView, Text } from '../ui';
 import { Card, LinkRow, Segmented } from '../components/common';
 import { fmt } from '../i18n';
 import { usePremium } from '../premium';
 import { useAccount } from '../account/AccountContext';
+import { getApi } from '../account/api';
+import { serverReady } from '../account/config';
 import CatImage from '../components/CatImage';
 
 const PLUS_IMAGE = require('../../assets/images/plus-cat.png');
@@ -37,7 +39,18 @@ export default function SettingsScreen({
   num = String,
 }) {
   const { request } = usePremium();
-  const { user } = useAccount();
+  const { user, authed } = useAccount();
+  // A dot on "Support" while an answer from us has not been opened yet.
+  const [supportUnread, setSupportUnread] = useState(0);
+  useEffect(() => {
+    if (!user || !serverReady()) {
+      setSupportUnread(0);
+      return undefined;
+    }
+    let live = true;
+    authed((tok) => getApi().supportUnread(tok)).then((r) => { if (live && r) setSupportUnread(Number(r.unread) || 0); }, () => {});
+    return () => { live = false; };
+  }, [user, authed]);
   const Chevron = rtl ? ChevronLeft : ChevronRight;
   const chevron = <Chevron size={16} color={c.muted} />;
   const align = rtl ? 'right' : 'left';
@@ -67,7 +80,22 @@ export default function SettingsScreen({
       ) : null}
 
       <Card c={c} rtl={rtl} style={{ gap: 0 }}>
-        <LinkRow icon={UserRound} title={t.account} subtitle={user ? fmt(t.accSignedInAs, { name: user.name || user.phone }) : t.accRowHint} onPress={() => onOpen('account')} trailing={chevron} c={c} rtl={rtl} last />
+        <LinkRow icon={UserRound} title={t.account} subtitle={user ? fmt(t.accSignedInAs, { name: user.name || user.phone }) : t.accRowHint} onPress={() => onOpen('account')} trailing={chevron} c={c} rtl={rtl} />
+        <LinkRow
+          icon={LifeBuoy}
+          title={t.support}
+          subtitle={t.supportRowHint}
+          onPress={() => onOpen('support')}
+          trailing={
+            <View style={{ flexDirection: rtl ? 'row-reverse' : 'row', alignItems: 'center', gap: 8 }}>
+              {supportUnread ? <View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: c.accent }} accessibilityLabel={t.supportAnswered} /> : null}
+              {chevron}
+            </View>
+          }
+          c={c}
+          rtl={rtl}
+          last
+        />
       </Card>
 
       <Card title={t.settingsGeneral} c={c} rtl={rtl}>
