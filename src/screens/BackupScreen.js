@@ -15,6 +15,9 @@ import { formatDateKey } from '../calendar';
 import { formatBytes, isoToDateKey, numberFormatter } from '../utils/format';
 import { fmt } from '../i18n';
 import CloudBackupCard from '../components/CloudBackupCard';
+import CatImage from '../components/CatImage';
+
+const BACKUP_CAT = require('../../assets/images/backup-cat.png');
 
 /** Map a parse error code to an i18n string. */
 function parseErrorMsg(code, t) {
@@ -185,6 +188,7 @@ export default function BackupScreen({ db, t, c, rtl, language, calendar, onBack
     <>
     <ScrollView contentContainerStyle={s.page}>
       <SubHeader title={t.backup} onBack={onBack} c={c} rtl={rtl} t={t} />
+      <CatImage source={BACKUP_CAT} width={190} />
       <Note c={c} rtl={rtl}>{t.backupIntro}</Note>
 
       <Animated.View entering={fadeInDown(0)}>

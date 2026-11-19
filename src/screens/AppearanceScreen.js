@@ -31,7 +31,7 @@ export default function AppearanceScreen({ t, c, rtl, appearance, setAppearance,
   return (
     <ScrollView contentContainerStyle={s.page}>
       <SubHeader title={t.appearance} onBack={onBack} c={c} rtl={rtl} t={t} />
-      <CatImage source={APPEARANCE_CAT} width={170} rounded />
+      <CatImage source={APPEARANCE_CAT} width={170} />
 
       <Card title={t.appearanceMode} c={c} rtl={rtl}>
         <Segmented

@@ -8,6 +8,9 @@ import { useAccount } from '../account/AccountContext';
 import { ApiError, getApi } from '../account/api';
 import { errText } from '../account/errors';
 import { serverReady } from '../account/config';
+import CatImage from '../components/CatImage';
+
+const SUPPORT_CAT = require('../../assets/images/support-cat.png');
 
 const SUBJECT_MAX = 100;
 const MESSAGE_MAX = 2000;
@@ -151,6 +154,7 @@ export default function SupportScreen({ t, c, rtl, language, num = String, onBac
     return (
       <ScrollView contentContainerStyle={s.page}>
         {header}
+        <CatImage source={SUPPORT_CAT} width={200} />
         <Card c={c} rtl={rtl}>
           <Note c={c} rtl={rtl}>{t.supportSignIn}</Note>
           {serverReady() ? <Button label={t.account} onPress={onOpenAccount} c={c} rtl={rtl} variant="primary" /> : null}
@@ -213,6 +217,7 @@ export default function SupportScreen({ t, c, rtl, language, num = String, onBac
   return (
     <ScrollView contentContainerStyle={s.page}>
       {header}
+      <CatImage source={SUPPORT_CAT} width={200} />
       <Note c={c} rtl={rtl}>{t.supportIntro}</Note>
       <Button label={t.supportNew} icon={Plus} onPress={() => { setError(''); setView('new'); }} c={c} rtl={rtl} variant="primary" />
       {error ? <Note c={c} rtl={rtl} tone="danger">{error}</Note> : null}

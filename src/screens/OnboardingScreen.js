@@ -97,7 +97,7 @@ export default function OnboardingScreen({
     <View style={[s.root, { backgroundColor: c.bg, paddingTop: insets.top + 16, paddingBottom: insets.bottom + 16 }]}>
       <ScrollView contentContainerStyle={s.body}>
         {page === 2 ? (
-          <CatImage source={LOCK_CAT} width={190} rounded style={{ marginBottom: 6 }} />
+          <CatImage source={LOCK_CAT} width={190} style={{ marginBottom: 6 }} />
         ) : (
           <View style={[s.icon, { backgroundColor: c.sage }]}>
             <Icon size={30} color={c.sageDark} />

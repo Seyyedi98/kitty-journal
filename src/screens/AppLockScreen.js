@@ -103,7 +103,7 @@ export default function AppLockScreen({ lock, t, c, rtl, onBack }) {
     return (
       <ScrollView contentContainerStyle={s.page}>
         <SubHeader title={t.appLock} onBack={() => reset()} c={c} rtl={rtl} t={t} />
-        <CatImage source={LOCK_CAT} width={120} rounded />
+        <CatImage source={LOCK_CAT} width={120} />
         <Card title={title} c={c} rtl={rtl}>
           {hint ? <Text style={{ color: c.muted, fontSize: 11, textAlign: align }}>{hint}</Text> : null}
           {message ? <Note c={c} rtl={rtl} tone={problem ? 'danger' : 'ok'}>{message}</Note> : null}
@@ -118,7 +118,7 @@ export default function AppLockScreen({ lock, t, c, rtl, onBack }) {
   return (
     <ScrollView contentContainerStyle={s.page}>
       <SubHeader title={t.appLock} onBack={onBack} c={c} rtl={rtl} t={t} />
-      <CatImage source={LOCK_CAT} width={170} rounded />
+      <CatImage source={LOCK_CAT} width={170} />
       <Note c={c} rtl={rtl}>{t.appLockHint}</Note>
       <Note c={c} rtl={rtl}>{t.lockNote}</Note>
 

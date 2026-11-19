@@ -20,7 +20,7 @@ export default function CapsuleArrived({ items, onView, onLater, t, c, rtl, num 
     <Modal visible={list.length > 0} transparent animationType="fade" onRequestClose={onLater}>
       <View style={s.backdrop}>
         <View style={[s.card, { backgroundColor: c.paper, borderColor: c.line }]}>
-          <CatImage source={CAT} width={170} />
+          <CatImage source={CAT} width={130} />
           <Text style={{ color: c.ink, fontSize: 20, fontWeight: '800', textAlign: 'center' }}>
             {one ? t.capsuleArrTitle : fmt(t.capsuleArrTitleMany, { n: num(list.length) })}
           </Text>
