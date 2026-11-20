@@ -13,6 +13,9 @@ import { calendarDateKey, formatDateKey, weekStartFor } from '../calendar';
 import { fmt } from '../i18n';
 import { mergeDayMoods } from '../utils/wrapped';
 import CatImage from '../components/CatImage';
+import { CompareCard, FactorsCard, PlacesCard, RhythmCard, ShareStatsCard } from '../components/InsightsPlus';
+import { avgMood, comparePeriods, hourSlots, moodFactors, topPlaces, wordFigures, writingRuns } from '../utils/insightsPlus';
+import { insightsFixes, insightsPlusText } from '../i18n/insightsPlus';
 
 const INSIGHTS_CAT = require('../../assets/images/analytics-cat.png');
 
@@ -55,8 +58,10 @@ function Rows({ rows, c, rtl, color }) {
   ));
 }
 
-export default function InsightsScreen({ t, c, rtl, language, calendar, today, entries, dailyMoods, premium = true }) {
+export default function InsightsScreen({ t: tBase, c, rtl, language, calendar, today, entries, dailyMoods, premium = true }) {
   const { openPremium } = usePremium();
+  // the extra statistics bring their own texts (keys start with "ip")
+  const t = useMemo(() => ({ ...(insightsPlusText[language] || insightsPlusText.en), ...tBase, ...(insightsFixes[language] || {}) }), [tBase, language]);
   const [preset, setPreset] = useState('30d');
   const localeTag = language === 'fa' ? 'fa-IR' : language === 'tr' ? 'tr-TR' : 'en-US';
   const num = useMemo(() => {
@@ -93,14 +98,36 @@ export default function InsightsScreen({ t, c, rtl, language, calendar, today, e
   const weekMax = Math.max(1, ...data.weekdays.map((w) => w.count));
   const monthMax = Math.max(1, ...data.monthly.map((m) => m.count));
   const weeklyHasData = data.weeklyMood.some((w) => w.avg != null);
+  const weekdayLong = (day) =>
+    new Intl.DateTimeFormat(localeTag, { weekday: 'long', timeZone: 'UTC' }).format(new Date(Date.UTC(2023, 0, 1 + day)));
+
+  // Extra figures. The runs and the average mood are free; the rest is Premium.
+  const plus = useMemo(() => {
+    const runs = writingRuns(entries, range, today);
+    const mood = avgMood(dayMoods, range.from, range.to);
+    if (!premium) return { runs, mood };
+    return {
+      runs,
+      mood,
+      cmp: comparePeriods({ entries, dayMoods, range, rangeDays: data.totals.rangeDays }),
+      factors: moodFactors({ entries, dayMoods, range }),
+      hours: hourSlots(entries, range),
+      words: wordFigures(entries, range),
+      places: topPlaces({ entries, dayMoods, range }),
+    };
+  }, [entries, dayMoods, range, today, premium, data.totals.rangeDays]);
+  const avgText = plus.mood.avg == null ? '–' : num(Math.round(plus.mood.avg * 10) / 10);
+  const extraTiles = [
+    [avgText, t.ipTileAvgMood],
+    [num(plus.runs.longest), t.ipTileLongestRun],
+    [num(plus.runs.current), t.ipTileCurrentRun],
+  ];
+  const rangeLabel = t[shownPreset === 'all' ? 'rangeAll' : `range${shownPreset}`];
 
   const summary = [
     [num(totals.entries), t.entries],
     [fmt(t.writingDaysOf, { a: num(totals.writingDays), b: num(totals.rangeDays) }), t.writingDays],
-    [num(totals.words), t.totalWords],
-    [num(totals.avgWords), t.avgWords],
-    [num(totals.favorites), t.favorites],
-    [num(entries.length), t.rangeAll],
+    [num(entries.length), t.ipTileAll],
   ];
 
   const emotionRows = data.topEmotions.map((x) => ({
@@ -128,8 +155,8 @@ export default function InsightsScreen({ t, c, rtl, language, calendar, today, e
 
       {totals.entries === 0 && entries.length === 0 ? <Note c={c} rtl={rtl}>{t.insightsEmpty}</Note> : null}
 
-      {/* 1. The numbers: one tidy 3 x 2 grid */}
-      {[summary.slice(0, 3), summary.slice(3)].map((row, r) => (
+      {/* 1. The numbers: six tiles in two tidy rows */}
+      {[[...summary, ...extraTiles].slice(0, 3), [...summary, ...extraTiles].slice(3)].map((row, r) => (
         <View key={r} style={[s.grid, rtl && s.rowReverse]}>
           {row.map(([value, label], i) => (
             <View key={i} style={[s.stat, { backgroundColor: c.card, borderColor: c.line }]}>
@@ -139,6 +166,8 @@ export default function InsightsScreen({ t, c, rtl, language, calendar, today, e
           ))}
         </View>
       ))}
+
+      {premium && plus.cmp ? <CompareCard t={t} c={c} rtl={rtl} num={num} language={language} calendar={calendar} cmp={plus.cmp} /> : null}
 
       {/* 2. Mood: the year at a glance, then the split for the chosen range */}
       {premium ? <MoodYear t={t} c={c} rtl={rtl} language={language} calendar={calendar} today={today} dayMoods={dayMoods} /> : null}
@@ -170,6 +199,8 @@ export default function InsightsScreen({ t, c, rtl, language, calendar, today, e
         </Card>
       ) : null}
 
+      {premium ? <FactorsCard t={t} c={c} rtl={rtl} num={num} factors={plus.factors} weekdayLong={weekdayLong} /> : null}
+
       {/* 3. Writing habits */}
       {premium ? (
         <Card title={t.monthlyActivity} c={c} rtl={rtl}>
@@ -186,6 +217,8 @@ export default function InsightsScreen({ t, c, rtl, language, calendar, today, e
           )}
         </Card>
       ) : null}
+
+      {premium ? <RhythmCard t={t} c={c} rtl={rtl} num={num} hours={plus.hours} runs={plus.runs} words={plus.words} /> : null}
 
       {/* 4. What you write about */}
       {premium && data.topTags.length ? (
@@ -205,6 +238,25 @@ export default function InsightsScreen({ t, c, rtl, language, calendar, today, e
         </Card>
       ) : null}
 
+      {premium ? <PlacesCard t={t} c={c} rtl={rtl} num={num} places={plus.places} /> : null}
+
+      {premium ? (
+        <ShareStatsCard
+          t={t}
+          c={c}
+          rtl={rtl}
+          num={num}
+          today={today}
+          rangeLabel={rangeLabel}
+          totals={totals}
+          moodCounts={data.mood.counts}
+          avg={plus.mood.avg}
+          longestRun={plus.runs.longest}
+          topTag={data.topTags[0] ? data.topTags[0].name : null}
+          topPlace={plus.places && plus.places[0] ? plus.places[0].name : null}
+        />
+      ) : null}
+
       {!premium ? (
         <View style={[s.plus, { backgroundColor: c.accentSoft, borderColor: c.line }]}>
           <View style={[s.plusBadge, { backgroundColor: c.accent }]}>
@@ -213,7 +265,7 @@ export default function InsightsScreen({ t, c, rtl, language, calendar, today, e
           <Text style={{ color: c.ink, fontSize: 18, fontWeight: '800', textAlign: 'center' }}>{t.insightsLockedTitle}</Text>
           <Text style={{ color: c.muted, fontSize: 13, lineHeight: 20, textAlign: 'center' }}>{t.insightsLockedBody}</Text>
           <View style={{ alignSelf: 'stretch', gap: 9 }}>
-            {[t.moodYear, t.insightsPoint1, t.insightsPoint2, t.insightsPoint3].map((p, i) => (
+            {[t.moodYear, t.ipPtCompare, t.ipPtFactors, t.ipPtRhythm, t.ipPtPlaces, t.ipPtShare].map((p, i) => (
               <View key={i} style={[s.plusRow, rtl && s.rowReverse]}>
                 <Check size={16} color={c.sageDark} />
                 <Text style={{ color: c.ink, fontSize: 13, flex: 1, textAlign: align }}>{p}</Text>
